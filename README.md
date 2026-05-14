@@ -49,27 +49,30 @@ elsewhere.
 All MCP repos carry the `Project = mcp-server` tag. With the default
 `environment = prod`, discovery resolves to:
 
-| MCP             | Lambda log group                            | Access-log client fields   |
-| --------------- | -------------------------------------------- | -------------------------- |
-| eBird           | `/aws/lambda/ebird-mcp-prod`                 | `sourceIp`, `userAgent`    |
-| Anchorage GIS   | `/aws/lambda/anchorage-gis-mcp-prod`         | `sourceIp`, `userAgent`    |
-| Boston OpenData | `/aws/lambda/boston-opencontext-mcp-prod`    | `ip` only (no `userAgent`) |
+| MCP             | Lambda log group                          | Access-log client fields   |
+| --------------- | ------------------------------------------ | -------------------------- |
+| eBird           | `/aws/lambda/ebird-mcp-prod`               | `sourceIp`, `userAgent`    |
+| Anchorage GIS   | `/aws/lambda/anchorage-gis-mcp-prod`       | `sourceIp`, `userAgent`    |
+| Boston OpenData | `/aws/lambda/boston-opencontext-mcp-prod`  | `ip` only (no `userAgent`) |
+| Census          | `/aws/lambda/census-mcp-prod`              | `ip` only (no `userAgent`) |
 
 Known gaps / variances:
 
-- **Census has no prod deployment tagged yet** — only `census-mcp-staging-access`
-  is discoverable, so Census is out of scope under `environment = prod`. It
-  joins the dashboard automatically once `census-mcp-prod` is deployed + tagged.
+- **Discovery is eventually consistent.** The Resource Groups Tagging API can
+  return slightly different result sets between calls — an early probe during
+  development missed `census-mcp-prod` that a re-probe (and the Terraform data
+  source) then returned. Each `terraform plan`/`apply` re-reads the API, so the
+  log group list can momentarily flap if a run catches an incomplete view; the
+  next run self-corrects. This is inherent to tag-based discovery.
 - **Access-log schema is not uniform.** eBird and Anchorage GIS emit
-  `sourceIp` + `userAgent`; Boston (and Census) emit `ip` and no `userAgent`.
+  `sourceIp` + `userAgent`; Boston and Census emit `ip` and no `userAgent`.
   Queries normalise with `coalesce(sourceIp, ip)`; the userAgent-based
   "unique client" proxy degrades to IP-only for MCPs that omit it.
 - **Census runs a different codebase** (Node.js, not the shared Python
   `core/`). If its Lambda logs do not carry identical `jsonrpc_*` field
   names, the Lambda-log widgets simply show no Census rows — non-fatal.
 - **Staging groups exist for several MCPs** (`ebird-mcp-staging`,
-  `boston-ckan-mcp-staging`, `census-mcp-staging`) and are excluded by the
-  default `prod` scope.
+  `boston-ckan-mcp-staging`, …) and are excluded by the default `prod` scope.
 
 ## Usage
 
