@@ -39,16 +39,28 @@ locals {
   ]
 
   # Split the discovered groups by the fleet's naming convention:
-  #   /aws/lambda/<name>            — JSON Lambda logs (mcp_session_id,
-  #                                   jsonrpc_method, jsonrpc_params.*)
-  #   /aws/apigateway/<name>-access — API Gateway access logs (sourceIp/ip,
-  #                                   userAgent where present)
-  # Sorted so plan output is stable regardless of tagging-API ordering.
-  mcp_lambda_log_groups = sort([
+  #   /aws/lambda/<mcp>-<env>            — JSON Lambda logs (mcp_session_id,
+  #                                        jsonrpc_method, jsonrpc_params.*)
+  #   /aws/apigateway/<mcp>-<env>-access — API Gateway access logs (sourceIp/ip,
+  #                                        userAgent where present)
+  _all_lambda_log_groups = [
     for n in local._mcp_log_group_names : n if startswith(n, "/aws/lambda/")
+  ]
+  _all_apigw_log_groups = [
+    for n in local._mcp_log_group_names : n if startswith(n, "/aws/apigateway/")
+  ]
+
+  # The fleet runs both staging and prod under the same Project tag, so scope
+  # to a single environment by the trailing `-<env>` name segment. var.environment
+  # = "" disables the filter and keeps every environment. Sorted so plan output
+  # is stable regardless of tagging-API ordering.
+  mcp_lambda_log_groups = sort([
+    for n in local._all_lambda_log_groups :
+    n if var.environment == "" || endswith(n, "-${var.environment}")
   ])
 
   mcp_apigw_log_groups = sort([
-    for n in local._mcp_log_group_names : n if startswith(n, "/aws/apigateway/")
+    for n in local._all_apigw_log_groups :
+    n if var.environment == "" || endswith(n, "-${var.environment}-access")
   ])
 }

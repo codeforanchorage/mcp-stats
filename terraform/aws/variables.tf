@@ -20,3 +20,16 @@ variable "dashboard_name" {
   type        = string
   default     = "mcp-fleet-usage"
 }
+
+variable "environment" {
+  description = <<-EOT
+    Deployment environment to scope the dashboard to. MCP log groups are named
+    `/aws/lambda/<mcp>-<env>` and `/aws/apigateway/<mcp>-<env>-access`, and the
+    fleet runs both staging and prod under the same `Project` tag. Discovery
+    keeps only the groups whose name matches this environment.
+
+    Set to "" to include EVERY discovered environment (staging + prod commingled).
+  EOT
+  type        = string
+  default     = "prod"
+}
