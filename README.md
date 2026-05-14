@@ -58,12 +58,13 @@ All MCP repos carry the `Project = mcp-server` tag. With the default
 
 Known gaps / variances:
 
-- **Discovery is eventually consistent.** The Resource Groups Tagging API can
-  return slightly different result sets between calls — an early probe during
-  development missed `census-mcp-prod` that a re-probe (and the Terraform data
-  source) then returned. Each `terraform plan`/`apply` re-reads the API, so the
-  log group list can momentarily flap if a run catches an incomplete view; the
-  next run self-corrects. This is inherent to tag-based discovery.
+- **Discovery is eventually consistent.** The Resource Groups Tagging API
+  indexes tags asynchronously, so `get-resources` can return slightly different
+  result sets between calls — and a freshly tagged (or freshly destroyed) log
+  group may take a while to appear or drop out. Each `terraform plan`/`apply`
+  re-reads the API, so the discovered list can momentarily flap if a run catches
+  an in-between view; the next run self-corrects. This is inherent to tag-based
+  discovery, not a bug in this project.
 - **Access-log schema is not uniform.** eBird and Anchorage GIS emit
   `sourceIp` + `userAgent`; Boston and Census emit `ip` and no `userAgent`.
   Queries normalise with `coalesce(sourceIp, ip)`; the userAgent-based
