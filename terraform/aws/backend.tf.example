@@ -1,0 +1,23 @@
+# Rename this file to `backend.tf` after running `scripts/setup-backend.sh`.
+# That script creates the S3 bucket + DynamoDB lock table and generates a
+# pre-filled `backend.tf` automatically — the block below just documents
+# what it produces, so you do not normally edit this by hand.
+#
+# This state is deliberately SEPARATE from every MCP repo's Terraform state.
+# mcp-observability only READS the MCP fleet's CloudWatch log groups (via the
+# Resource Groups Tagging API); it never manages MCP resources, so it must
+# never share state with them.
+#
+# The DynamoDB lock table name (`terraform-state-lock`) is intentionally the
+# same one the MCP repos use — DynamoDB state locking is keyed per state file
+# (LockID), so a shared lock table is safe and avoids table sprawl.
+#
+# terraform {
+#   backend "s3" {
+#     bucket         = "mcp-observability-tfstate-<account-id>-<region>"
+#     key            = "terraform.tfstate"
+#     region         = "us-west-2"
+#     dynamodb_table = "terraform-state-lock"
+#     encrypt        = true
+#   }
+# }

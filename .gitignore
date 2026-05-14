@@ -1,0 +1,21 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Local variable files that may carry environment-specific values.
+*.tfvars.local
+
+# Local, per-developer Claude Code settings.
+.claude/settings.local.json
+
+# Internal planning doc — kept local, not published.
+BRIEF.md
