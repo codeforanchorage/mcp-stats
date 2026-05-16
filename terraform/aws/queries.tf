@@ -27,9 +27,12 @@ resource "aws_cloudwatch_query_definition" "sessions_per_day" {
   name            = "mcp-fleet/usage/sessions-per-day"
   log_group_names = local.mcp_lambda_log_groups
 
+  # `mcp_session_id` is minted DURING the `initialize` handshake, so the
+  # initialize log line itself doesn't carry one. We instead count distinct
+  # session IDs across ALL log lines per day — i.e. "active sessions per
+  # day", which is the load metric anyone glancing at this actually wants.
   query_string = <<-EOT
-    fields @timestamp, @log, mcp_session_id, jsonrpc_method
-    | filter jsonrpc_method = "initialize" and ispresent(mcp_session_id)
+    filter ispresent(mcp_session_id)
     | stats count_distinct(mcp_session_id) as sessions by bin(1d), @log
     | sort @timestamp asc
   EOT
@@ -44,7 +47,7 @@ resource "aws_cloudwatch_query_definition" "unique_clients_per_day" {
   query_string = <<-EOT
     fields @timestamp,
            coalesce(sourceIp, ip) as client_ip,
-           concat(coalesce(sourceIp, ip), "|", coalesce(userAgent, "")) as client_key
+           concat(coalesce(sourceIp, ip), '|', coalesce(userAgent, '')) as client_key
     | filter ispresent(client_ip)
     | stats count_distinct(client_key) as unique_clients,
             count_distinct(client_ip) as unique_ips
@@ -61,7 +64,7 @@ resource "aws_cloudwatch_query_definition" "client_family_breakdown" {
     fields @timestamp,
            jsonrpc_params.clientInfo.name as client,
            jsonrpc_params.clientInfo.version as version
-    | filter jsonrpc_method = "initialize"
+    | filter jsonrpc_method = 'initialize'
     | stats count(*) as initializes by client, version
     | sort initializes desc
   EOT
@@ -73,7 +76,7 @@ resource "aws_cloudwatch_query_definition" "tool_popularity_by_mcp" {
 
   query_string = <<-EOT
     fields @timestamp, @log, jsonrpc_params.name as tool
-    | filter jsonrpc_method = "tools/call" and ispresent(tool)
+    | filter jsonrpc_method = 'tools/call' and ispresent(tool)
     | stats count(*) as calls by @log, tool
     | sort calls desc
   EOT

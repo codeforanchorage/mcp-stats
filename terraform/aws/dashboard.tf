@@ -7,14 +7,24 @@
 # groups from discovery.tf. As MCPs join or leave the fleet, the widgets
 # widen/narrow on the next `terraform apply`.
 #
-# A Logs Insights `SOURCE` directive accepts multiple space-separated quoted
-# log group names; the locals below build those clauses from discovery.
+# Log groups are passed inline in each widget's query as a pipe-chain of
+# `SOURCE 'name'` clauses, with one more `|` separating the SOURCE list from
+# the rest of the Logs Insights query:
+#   SOURCE 'lg1' | SOURCE 'lg2' | … | fields …
+# This is the AWS-documented format for dashboard log widgets (see
+# "Dashboard Body Structure and Syntax" → log widget properties). The
+# `logGroupNames` widget property is NOT a documented log-widget property
+# and the renderer ignores it for routing — without inline SOURCE the
+# StartQuery call goes out empty and the parser errors at `<EOF>`. The
+# advanced `SOURCE logGroups(namePrefix: [...])` function form works via the
+# raw StartQuery API but is rejected by the dashboard renderer's older
+# parser, so don't use it here.
 # ─────────────────────────────────────────────────────────────────────────────
 
 locals {
-  # `SOURCE 'lg1' 'lg2' ...` clauses for log widgets.
-  lambda_source = "SOURCE ${join(" ", [for g in local.mcp_lambda_log_groups : "'${g}'"])}"
-  apigw_source  = "SOURCE ${join(" ", [for g in local.mcp_apigw_log_groups : "'${g}'"])}"
+  # Pipe-chained `SOURCE 'lg1' | SOURCE 'lg2' | ...` prefix for log widgets.
+  lambda_source = join(" | ", [for g in local.mcp_lambda_log_groups : "SOURCE '${g}'"])
+  apigw_source  = join(" | ", [for g in local.mcp_apigw_log_groups : "SOURCE '${g}'"])
 }
 
 resource "aws_cloudwatch_dashboard" "fleet_usage" {
@@ -30,14 +40,13 @@ resource "aws_cloudwatch_dashboard" "fleet_usage" {
         width  = 12
         height = 6
         properties = {
-          title   = "Sessions per day — whole fleet (distinct mcp_session_id on initialize)"
+          title   = "Sessions per day — whole fleet (distinct mcp_session_id seen each day)"
           region  = var.aws_region
           view    = "timeSeries"
           stacked = false
           query = join("\n", [
-            local.lambda_source,
-            "| fields @timestamp, mcp_session_id, jsonrpc_method",
-            "| filter jsonrpc_method = \"initialize\" and ispresent(mcp_session_id)",
+            "${local.lambda_source}",
+            "| filter ispresent(mcp_session_id)",
             "| stats count_distinct(mcp_session_id) as sessions by bin(1d)",
             "| sort @timestamp asc",
           ])
@@ -55,8 +64,8 @@ resource "aws_cloudwatch_dashboard" "fleet_usage" {
           view    = "timeSeries"
           stacked = false
           query = join("\n", [
-            local.apigw_source,
-            "| fields @timestamp, coalesce(sourceIp, ip) as client_ip, concat(coalesce(sourceIp, ip), \"|\", coalesce(userAgent, \"\")) as client_key",
+            "${local.apigw_source}",
+            "| fields @timestamp, coalesce(sourceIp, ip) as client_ip, concat(coalesce(sourceIp, ip), '|', coalesce(userAgent, '')) as client_key",
             "| filter ispresent(client_ip)",
             "| stats count_distinct(client_key) as unique_clients, count_distinct(client_ip) as unique_ips by bin(1d)",
             "| sort @timestamp asc",
@@ -77,9 +86,8 @@ resource "aws_cloudwatch_dashboard" "fleet_usage" {
           view    = "timeSeries"
           stacked = true
           query = join("\n", [
-            local.lambda_source,
-            "| fields @timestamp, @log, mcp_session_id, jsonrpc_method",
-            "| filter jsonrpc_method = \"initialize\" and ispresent(mcp_session_id)",
+            "${local.lambda_source}",
+            "| filter ispresent(mcp_session_id)",
             "| stats count_distinct(mcp_session_id) as sessions by bin(1d), @log",
             "| sort @timestamp asc",
           ])
@@ -96,7 +104,7 @@ resource "aws_cloudwatch_dashboard" "fleet_usage" {
           region = var.aws_region
           view   = "bar"
           query = join("\n", [
-            local.apigw_source,
+            "${local.apigw_source}",
             "| stats count(*) as requests by @log",
             "| sort requests desc",
           ])
@@ -115,9 +123,9 @@ resource "aws_cloudwatch_dashboard" "fleet_usage" {
           region = var.aws_region
           view   = "table"
           query = join("\n", [
-            local.lambda_source,
+            "${local.lambda_source}",
             "| fields @log, jsonrpc_params.name as tool",
-            "| filter jsonrpc_method = \"tools/call\" and ispresent(tool)",
+            "| filter jsonrpc_method = 'tools/call' and ispresent(tool)",
             "| stats count(*) as calls by @log, tool",
             "| sort calls desc",
           ])
@@ -134,9 +142,9 @@ resource "aws_cloudwatch_dashboard" "fleet_usage" {
           region = var.aws_region
           view   = "bar"
           query = join("\n", [
-            local.lambda_source,
+            "${local.lambda_source}",
             "| fields jsonrpc_params.clientInfo.name as client",
-            "| filter jsonrpc_method = \"initialize\"",
+            "| filter jsonrpc_method = 'initialize'",
             "| stats count(*) as initializes by client",
             "| sort initializes desc",
           ])
@@ -155,7 +163,7 @@ resource "aws_cloudwatch_dashboard" "fleet_usage" {
           region = var.aws_region
           view   = "table"
           query = join("\n", [
-            local.apigw_source,
+            "${local.apigw_source}",
             "| fields @log, coalesce(sourceIp, ip) as client_ip, userAgent",
             "| filter ispresent(client_ip)",
             "| stats count(*) as requests, count_distinct(userAgent) as distinct_uas, count_distinct(@log) as mcps_hit by client_ip",
@@ -168,7 +176,7 @@ resource "aws_cloudwatch_dashboard" "fleet_usage" {
   })
 
   # Fail fast with a clear message if tag-based discovery comes back empty —
-  # otherwise the dashboard would apply with empty SOURCE clauses and show
+  # otherwise the dashboard would apply with empty SOURCE prefixes and show
   # nothing.
   lifecycle {
     precondition {
