@@ -53,6 +53,7 @@ All MCP repos carry the `Project = mcp-server` tag. With the default
 | --------------- | ------------------------------------------ | -------------------------- |
 | eBird           | `/aws/lambda/ebird-mcp-prod`               | `sourceIp`, `userAgent`    |
 | Anchorage GIS   | `/aws/lambda/anchorage-gis-mcp-prod`       | `sourceIp`, `userAgent`    |
+| Worcester GIS   | `/aws/lambda/worcester-gis-mcp-prod`       | `sourceIp`, `userAgent`    |
 | Boston OpenData | `/aws/lambda/boston-opencontext-mcp-prod`  | `ip` only (no `userAgent`) |
 | Census          | `/aws/lambda/census-mcp-prod`              | `ip` only (no `userAgent`) |
 
