@@ -25,13 +25,49 @@ locals {
   # Pipe-chained `SOURCE 'lg1' | SOURCE 'lg2' | ...` prefix for log widgets.
   lambda_source = join(" | ", [for g in local.mcp_lambda_log_groups : "SOURCE '${g}'"])
   apigw_source  = join(" | ", [for g in local.mcp_apigw_log_groups : "SOURCE '${g}'"])
+
+  # eBird is the one MCP with a hard UPSTREAM quota (see README "known gaps"):
+  # it soft-gates at 900/day under eBird's 1000/day hard limit, per warm
+  # container, resetting at UTC midnight. That ceiling — not AWS cost — is the
+  # fleet's binding constraint, and eBird is the publicly-advertised server, so
+  # it gets a dedicated "quota burn" widget. Scope it to just eBird's Lambda log
+  # group, derived from the tag-discovered list so it still honours
+  # var.environment. tools/call count is a PROXY for upstream eBird API calls
+  # (one tool call ≈ one-or-more eBird requests; cached hits don't burn quota),
+  # and the per-container reset means the fleet-wide daily total is an
+  # approximation, not an exact remaining-quota gauge. If eBird isn't in the
+  # discovered scope, ebird_quota_widgets is empty and the widget is omitted.
+  ebird_lambda_log_groups = [for g in local.mcp_lambda_log_groups : g if length(regexall("ebird", g)) > 0]
+  ebird_lambda_source     = join(" | ", [for g in local.ebird_lambda_log_groups : "SOURCE '${g}'"])
+
+  ebird_quota_widgets = local.ebird_lambda_source == "" ? [] : [
+    {
+      type   = "log"
+      x      = 0
+      y      = 24
+      width  = 24
+      height = 6
+      properties = {
+        title   = "eBird upstream quota burn — tools/call per day (proxy for eBird API calls; soft-gate 900/day, hard limit 1000/day, per warm container, resets UTC midnight)"
+        region  = var.aws_region
+        view    = "timeSeries"
+        stacked = false
+        query = join("\n", [
+          "${local.ebird_lambda_source}",
+          "| filter jsonrpc_method = 'tools/call'",
+          "| stats count(*) as ebird_api_calls by bin(1d)",
+          "| sort @timestamp asc",
+        ])
+      }
+    }
+  ]
 }
 
 resource "aws_cloudwatch_dashboard" "fleet_usage" {
   dashboard_name = var.dashboard_name
 
   dashboard_body = jsonencode({
-    widgets = [
+    widgets = concat([
       # ── Row 1: fleet sessions + fleet unique clients ────────────────────
       {
         type   = "log"
@@ -172,7 +208,7 @@ resource "aws_cloudwatch_dashboard" "fleet_usage" {
           ])
         }
       },
-    ]
+    ], local.ebird_quota_widgets)
   })
 
   # Fail fast with a clear message if tag-based discovery comes back empty —
