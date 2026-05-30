@@ -75,6 +75,15 @@ Known gaps / variances:
   names, the Lambda-log widgets simply show no Census rows — non-fatal.
 - **Staging groups exist for several MCPs** (`ebird-mcp-staging`,
   `boston-ckan-mcp-staging`, …) and are excluded by the default `prod` scope.
+- **Per-MCP cost attribution is forward-only.** The `Project` tag was
+  activated as a cost-allocation tag on 2026-05-30, so Cost Explorer can now
+  break Lambda / API Gateway / CloudWatch spend down per MCP — but only for
+  usage from that date forward; AWS does not backfill tag-based cost data, so
+  earlier spend is unattributable. Note also that the AWS account is **shared
+  with unrelated infrastructure** (RDS, VPC, WAF, …), so account-level totals
+  are not a proxy for fleet cost. The fleet's own serverless footprint is
+  tiny — Lambda + API Gateway run at fractions of a cent/week at current
+  traffic; CloudWatch logs are the only material line item.
 
 ## Usage
 
