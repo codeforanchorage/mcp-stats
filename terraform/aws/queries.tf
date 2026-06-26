@@ -60,13 +60,54 @@ resource "aws_cloudwatch_query_definition" "client_family_breakdown" {
   name            = "mcp-fleet/usage/client-family-breakdown"
   log_group_names = local.mcp_lambda_log_groups
 
+  # The `mcpregistry` crawler accounts for ~40%+ of all initialize handshakes
+  # (it connects, enumerates tools/list, and disconnects without ever calling a
+  # tool), drowning out real human clients — so it is filtered out here to match
+  # the dashboard's client-family widget. 'mcpregistry' is single-quoted = a
+  # literal string; double quotes would be read as a FIELD reference and
+  # silently match nothing.
   query_string = <<-EOT
     fields @timestamp,
            jsonrpc_params.clientInfo.name as client,
            jsonrpc_params.clientInfo.version as version
     | filter jsonrpc_method = 'initialize'
+    | filter client != 'mcpregistry'
     | stats count(*) as initializes by client, version
     | sort initializes desc
+  EOT
+}
+
+# "Real usage" — probes/handshakes stripped. The fleet's sessions/clients/
+# request widgets are dominated by discovery traffic (the `mcpregistry` crawler
+# and anonymous scanners run initialize + tools/list and leave without invoking
+# a tool — ~95% of Lambda activity at current volume). These two queries keep
+# ONLY `tools/call`, which only a real client driving the server ever emits, so
+# they isolate genuine adoption from crawler noise. They mirror the dashboard's
+# "Row 5" real-usage widgets.
+resource "aws_cloudwatch_query_definition" "real_tool_calls_per_day" {
+  name            = "mcp-fleet/usage/real-tool-calls-per-day"
+  log_group_names = local.mcp_lambda_log_groups
+
+  query_string = <<-EOT
+    filter jsonrpc_method = 'tools/call'
+    | stats count(*) as tool_calls by bin(1d), @log
+    | sort @timestamp asc
+  EOT
+}
+
+resource "aws_cloudwatch_query_definition" "real_user_sessions_per_day" {
+  name            = "mcp-fleet/usage/real-user-sessions-per-day"
+  log_group_names = local.mcp_lambda_log_groups
+
+  # A "real user session" is a session that actually invoked a tool — i.e. a
+  # distinct mcp_session_id appearing on at least one tools/call line. Requires
+  # the session id to be present, so Boston (doesn't propagate mcp_session_id)
+  # and Census (Node.js codebase, no jsonrpc_* fields) under-count here, the
+  # same gaps as the other Lambda-log queries.
+  query_string = <<-EOT
+    filter jsonrpc_method = 'tools/call' and ispresent(mcp_session_id)
+    | stats count_distinct(mcp_session_id) as real_sessions by bin(1d), @log
+    | sort @timestamp asc
   EOT
 }
 
