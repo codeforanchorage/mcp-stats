@@ -44,7 +44,7 @@ locals {
     {
       type   = "log"
       x      = 0
-      y      = 24
+      y      = 30
       width  = 24
       height = 6
       properties = {
@@ -174,13 +174,20 @@ resource "aws_cloudwatch_dashboard" "fleet_usage" {
         width  = 12
         height = 6
         properties = {
-          title  = "MCP client family — whole fleet (clientInfo.name on initialize)"
+          title  = "MCP client family — whole fleet (clientInfo.name on initialize; excludes mcpregistry crawler)"
           region = var.aws_region
           view   = "bar"
+          # The `mcpregistry` crawler accounts for ~40%+ of all initialize
+          # handshakes (it connects, enumerates tools/list, and disconnects
+          # without ever calling a tool), which drowns out real human clients.
+          # Filter it out so this widget reflects actual client families.
+          # NOTE: 'mcpregistry' is single-quoted = a literal string; double
+          # quotes would be read as a FIELD reference and silently match nothing.
           query = join("\n", [
             "${local.lambda_source}",
             "| fields jsonrpc_params.clientInfo.name as client",
             "| filter jsonrpc_method = 'initialize'",
+            "| filter client != 'mcpregistry'",
             "| stats count(*) as initializes by client",
             "| sort initializes desc",
           ])
@@ -205,6 +212,57 @@ resource "aws_cloudwatch_dashboard" "fleet_usage" {
             "| stats count(*) as requests, count_distinct(userAgent) as distinct_uas, count_distinct(@log) as mcps_hit by client_ip",
             "| sort requests desc",
             "| limit 50",
+          ])
+        }
+      },
+
+      # ── Row 5: REAL usage — probes/handshakes stripped ──────────────────
+      # The fleet's request/session/client widgets above are dominated by
+      # discovery traffic: the `mcpregistry` crawler and anonymous scanners
+      # connect, run initialize + tools/list, and leave without invoking a
+      # tool — ~95% of Lambda activity at current volume. These two widgets
+      # isolate genuine usage by keeping ONLY `tools/call`, which only a real
+      # client driving the server ever emits.
+      {
+        type   = "log"
+        x      = 0
+        y      = 24
+        width  = 12
+        height = 6
+        properties = {
+          title   = "Real tool calls per day by MCP (jsonrpc_method=tools/call only — strips initialize/tools/list/ping handshake & crawler traffic)"
+          region  = var.aws_region
+          view    = "timeSeries"
+          stacked = true
+          query = join("\n", [
+            "${local.lambda_source}",
+            "| filter jsonrpc_method = 'tools/call'",
+            "| stats count(*) as tool_calls by bin(1d), @log",
+            "| sort @timestamp asc",
+          ])
+        }
+      },
+      {
+        type   = "log"
+        x      = 12
+        y      = 24
+        width  = 12
+        height = 6
+        properties = {
+          # "Real user session" = a session that actually invoked a tool, i.e.
+          # a distinct mcp_session_id appearing on at least one tools/call line.
+          # Requires the session id to be present, so Boston (doesn't propagate
+          # mcp_session_id) and Census (Node.js codebase, no jsonrpc_* fields)
+          # under-count here — same gaps as the other Lambda-log widgets.
+          title   = "Real user sessions per day by MCP (distinct mcp_session_id with ≥1 tools/call; Boston/Census under-count)"
+          region  = var.aws_region
+          view    = "timeSeries"
+          stacked = true
+          query = join("\n", [
+            "${local.lambda_source}",
+            "| filter jsonrpc_method = 'tools/call' and ispresent(mcp_session_id)",
+            "| stats count_distinct(mcp_session_id) as real_sessions by bin(1d), @log",
+            "| sort @timestamp asc",
           ])
         }
       },

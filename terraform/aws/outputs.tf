@@ -31,5 +31,7 @@ output "saved_query_names" {
     aws_cloudwatch_query_definition.client_family_breakdown.name,
     aws_cloudwatch_query_definition.tool_popularity_by_mcp.name,
     aws_cloudwatch_query_definition.top_source_ips.name,
+    aws_cloudwatch_query_definition.real_tool_calls_per_day.name,
+    aws_cloudwatch_query_definition.real_user_sessions_per_day.name,
   ]
 }
