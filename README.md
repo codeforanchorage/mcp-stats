@@ -49,13 +49,24 @@ elsewhere.
 All MCP repos carry the `Project = mcp-server` tag. With the default
 `environment = prod`, discovery resolves to:
 
-| MCP             | Lambda log group                          | Access-log client fields   |
-| --------------- | ------------------------------------------ | -------------------------- |
-| eBird           | `/aws/lambda/ebird-mcp-prod`               | `sourceIp`, `userAgent`    |
-| Anchorage GIS   | `/aws/lambda/anchorage-gis-mcp-prod`       | `sourceIp`, `userAgent`    |
-| Worcester GIS   | `/aws/lambda/worcester-gis-mcp-prod`       | `sourceIp`, `userAgent`    |
-| Boston OpenData | `/aws/lambda/boston-opencontext-mcp-prod`  | `ip` only (no `userAgent`) |
-| Census          | `/aws/lambda/census-mcp-prod`              | `ip` only (no `userAgent`) |
+| MCP                    | Lambda log group                           | Access-log client fields   |
+| ---------------------- | ------------------------------------------ | -------------------------- |
+| eBird                  | `/aws/lambda/ebird-mcp-prod`               | `sourceIp`, `userAgent`    |
+| Anchorage GIS          | `/aws/lambda/anchorage-gis-mcp-prod`       | `sourceIp`, `userAgent`    |
+| Anchorage Parcels      | `/aws/lambda/anchorage-parcels-mcp-prod`   | `sourceIp`, `userAgent`    |
+| Anchorage eCode        | `/aws/lambda/anchorage-ecode-mcp-prod`     | `sourceIp`, `userAgent`    |
+| Audubon IBA            | `/aws/lambda/audubon-iba-mcp-prod`         | `sourceIp`, `userAgent`    |
+| San Diego Regional GIS | `/aws/lambda/sandiego-gis-mcp-prod`        | `sourceIp`, `userAgent`    |
+| San Diego City GIS     | `/aws/lambda/sandiego-city-gis-mcp-prod`   | `sourceIp`, `userAgent`    |
+| Worcester GIS          | `/aws/lambda/worcester-gis-mcp-prod`       | `sourceIp`, `userAgent`    |
+| Boston OpenData        | `/aws/lambda/boston-opencontext-mcp-prod`  | `ip` only (no `userAgent`) |
+| Census                 | `/aws/lambda/census-mcp-prod`              | `ip` only (no `userAgent`) |
+
+The five servers added 2026-07-13 (Anchorage Parcels, Anchorage eCode,
+Audubon IBA, both San Diego GIS servers) all run the shared Python `core/`
+codebase: their Lambda logs carry the full `jsonrpc_*` fields and their
+access logs emit `sourceIp` + `userAgent`, so every widget and saved query
+covers them with no schema gaps.
 
 Known gaps / variances:
 
