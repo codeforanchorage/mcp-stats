@@ -52,9 +52,14 @@ locals {
         region  = var.aws_region
         view    = "timeSeries"
         stacked = false
+        # The shared Python core logs TWO lines per JSON-RPC call (request +
+        # response), both carrying jsonrpc_method — a bare count(*) doubles.
+        # Only the request line has jsonrpc_params.name, so filtering on it
+        # counts each call once. (Census logs a single line that also carries
+        # jsonrpc_params.name, so this filter is a no-op there.)
         query = join("\n", [
           "${local.ebird_lambda_source}",
-          "| filter jsonrpc_method = 'tools/call'",
+          "| filter jsonrpc_method = 'tools/call' and ispresent(jsonrpc_params.name)",
           "| stats count(*) as ebird_api_calls by bin(1d)",
           "| sort @timestamp asc",
         ])
@@ -183,10 +188,13 @@ resource "aws_cloudwatch_dashboard" "fleet_usage" {
           # Filter it out so this widget reflects actual client families.
           # NOTE: 'mcpregistry' is single-quoted = a literal string; double
           # quotes would be read as a FIELD reference and silently match nothing.
+          # ispresent(client) drops the blank bucket that response log lines
+          # (no jsonrpc_params) and anonymous clients (no clientInfo) share —
+          # it dwarfed the named bars without meaning anything.
           query = join("\n", [
             "${local.lambda_source}",
             "| fields jsonrpc_params.clientInfo.name as client",
-            "| filter jsonrpc_method = 'initialize'",
+            "| filter jsonrpc_method = 'initialize' and ispresent(client)",
             "| filter client != 'mcpregistry'",
             "| stats count(*) as initializes by client",
             "| sort initializes desc",
@@ -234,9 +242,12 @@ resource "aws_cloudwatch_dashboard" "fleet_usage" {
           region  = var.aws_region
           view    = "timeSeries"
           stacked = true
+          # ispresent(jsonrpc_params.name) keeps only the request line of the
+          # request/response pair the Python core logs per call — a bare
+          # count(*) reads 2x actual.
           query = join("\n", [
             "${local.lambda_source}",
-            "| filter jsonrpc_method = 'tools/call'",
+            "| filter jsonrpc_method = 'tools/call' and ispresent(jsonrpc_params.name)",
             "| stats count(*) as tool_calls by bin(1d), @log",
             "| sort @timestamp asc",
           ])

@@ -21,6 +21,11 @@
 #     names, the Lambda-log queries simply return no rows for it — non-fatal.
 #   - `@log` is CloudWatch's per-result log group identifier; it is how every
 #     query below attributes a row to a specific MCP.
+#   - The shared Python `core/` logs TWO lines per JSON-RPC call — "request
+#     received" (has jsonrpc_params) and "request processed" (has
+#     jsonrpc_result). Any count(*) over a jsonrpc_method filter doubles
+#     unless it also requires ispresent(jsonrpc_params.name) (tools/call) or
+#     another request-only field. count_distinct() is immune.
 # ─────────────────────────────────────────────────────────────────────────────
 
 resource "aws_cloudwatch_query_definition" "sessions_per_day" {
@@ -70,7 +75,7 @@ resource "aws_cloudwatch_query_definition" "client_family_breakdown" {
     fields @timestamp,
            jsonrpc_params.clientInfo.name as client,
            jsonrpc_params.clientInfo.version as version
-    | filter jsonrpc_method = 'initialize'
+    | filter jsonrpc_method = 'initialize' and ispresent(client)
     | filter client != 'mcpregistry'
     | stats count(*) as initializes by client, version
     | sort initializes desc
@@ -88,8 +93,13 @@ resource "aws_cloudwatch_query_definition" "real_tool_calls_per_day" {
   name            = "mcp-fleet/usage/real-tool-calls-per-day"
   log_group_names = local.mcp_lambda_log_groups
 
+  # The shared Python core logs TWO lines per JSON-RPC call (request +
+  # response), both carrying jsonrpc_method — a bare count(*) doubles. Only
+  # the request line has jsonrpc_params.name, so filtering on it counts each
+  # call once. (Census logs a single line that also carries the field, so the
+  # filter is a no-op there.)
   query_string = <<-EOT
-    filter jsonrpc_method = 'tools/call'
+    filter jsonrpc_method = 'tools/call' and ispresent(jsonrpc_params.name)
     | stats count(*) as tool_calls by bin(1d), @log
     | sort @timestamp asc
   EOT
