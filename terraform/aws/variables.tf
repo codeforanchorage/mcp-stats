@@ -34,6 +34,19 @@ variable "environment" {
   default     = "prod"
 }
 
+# ─── Account-level API Gateway logging role (see apigw_account.tf) ──────────
+
+variable "apigw_account_role_name" {
+  description = <<-EOT
+    Name of the fleet-owned IAM role that API Gateway assumes to write access
+    logs to CloudWatch. This is set on the account+region-level singleton
+    `aws_api_gateway_account`, so it applies to EVERY API Gateway in the region,
+    not just the MCP fleet.
+  EOT
+  type        = string
+  default     = "mcp-fleet-apigw-cloudwatch"
+}
+
 # ─── Shared fleet WAF (see shared_waf.tf) ───────────────────────────────────
 
 variable "enable_fleet_waf" {
