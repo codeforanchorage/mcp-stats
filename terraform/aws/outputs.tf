@@ -23,6 +23,21 @@ output "discovered_mcp_count" {
   value       = length(local.mcp_lambda_log_groups)
 }
 
+output "fleet_waf_arn" {
+  description = "ARN of the shared fleet WAFv2 web ACL, or null when enable_fleet_waf is false."
+  value       = one(aws_wafv2_web_acl.fleet[*].arn)
+}
+
+output "fleet_waf_ssm_parameter" {
+  description = "SSM path where the shared web ACL ARN is published for the MCP repos to read."
+  value       = one(aws_ssm_parameter.fleet_waf_arn[*].name)
+}
+
+output "fleet_waf_members" {
+  description = "MCPs covered by a dedicated Host-scoped rate rule in the shared web ACL, with their limits."
+  value       = { for k, v in var.fleet_waf_members : k => v.rate_limit_per_5min }
+}
+
 output "saved_query_names" {
   description = "Names of the cross-MCP saved Logs Insights queries created by this project."
   value = [

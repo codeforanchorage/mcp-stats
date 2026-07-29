@@ -33,3 +33,79 @@ variable "environment" {
   type        = string
   default     = "prod"
 }
+
+# ─── Shared fleet WAF (see shared_waf.tf) ───────────────────────────────────
+
+variable "enable_fleet_waf" {
+  description = <<-EOT
+    Create the shared fleet-wide WAFv2 web ACL. This must be applied (and the
+    SSM parameter populated) BEFORE any MCP repo sets `use_shared_waf = true`,
+    or those repos' data lookups will fail.
+  EOT
+  type        = bool
+  default     = true
+}
+
+variable "fleet_waf_name" {
+  description = "Name of the shared fleet web ACL. Also the prefix for its CloudWatch metric names."
+  type        = string
+  default     = "mcp-fleet-waf"
+}
+
+variable "fleet_waf_ssm_parameter" {
+  description = <<-EOT
+    SSM Parameter Store path where the shared web ACL's ARN is published. Each
+    MCP repo reads this path to associate its API Gateway stage. Changing it
+    means changing `shared_waf_ssm_parameter` in every MCP repo too.
+  EOT
+  type        = string
+  default     = "/mcp-fleet/waf/web_acl_arn"
+}
+
+variable "fleet_waf_default_rate_limit_per_5min" {
+  description = <<-EOT
+    Per-IP limit applied by the catch-all rule to requests whose Host matches no
+    member — chiefly the default `execute-api` endpoints, which no MCP disables.
+    Defaults to 300, the value most of the fleet already uses.
+  EOT
+  type        = number
+  default     = 300
+}
+
+variable "fleet_waf_members" {
+  description = <<-EOT
+    The MCPs fronted by the shared web ACL: map of short key -> custom domain
+    and per-IP 5-minute rate limit. Each entry becomes one rate-based rule
+    scoped to that Host, preserving the limit that MCP's own ACL enforced.
+
+    The key is used in rule and CloudWatch metric names, so keep it short and
+    limited to [A-Za-z0-9_-]. `host` must be the custom domain the MCP actually
+    serves on — a mismatch silently means that MCP is only covered by the
+    catch-all rule.
+
+    Defaults mirror each repo's prod.tfvars as of 2026-07-28. When onboarding a
+    new MCP, add it here and apply BEFORE flipping the repo to the shared WAF.
+  EOT
+  type = map(object({
+    host                = string
+    rate_limit_per_5min = number
+  }))
+  default = {
+    ebird             = { host = "ebird.codeforanchorage.org", rate_limit_per_5min = 50 }
+    census            = { host = "us-census.codeforanchorage.org", rate_limit_per_5min = 2000 }
+    anchorage-gis     = { host = "anchorage-gis.codeforanchorage.org", rate_limit_per_5min = 600 }
+    anchorage-ecode   = { host = "anchorage-ecode.codeforanchorage.org", rate_limit_per_5min = 300 }
+    anchorage-parcels = { host = "anchorage-parcels.codeforanchorage.org", rate_limit_per_5min = 300 }
+    audubon-iba       = { host = "audubon-iba.codeforanchorage.org", rate_limit_per_5min = 300 }
+    esri-uc           = { host = "esri-uc.codeforanchorage.org", rate_limit_per_5min = 300 }
+    living-atlas      = { host = "living-atlas.codeforanchorage.org", rate_limit_per_5min = 300 }
+    sandiego-city     = { host = "sandiego-city-gis.codeforanchorage.org", rate_limit_per_5min = 300 }
+    sandiego-regional = { host = "sandiego-regional-gis.codeforanchorage.org", rate_limit_per_5min = 300 }
+    worcester         = { host = "worcester-gis.codeforanchorage.org", rate_limit_per_5min = 300 }
+  }
+
+  validation {
+    condition     = alltrue([for k in keys(var.fleet_waf_members) : can(regex("^[A-Za-z0-9_-]+$", k))])
+    error_message = "fleet_waf_members keys must match [A-Za-z0-9_-]+ (they become WAF rule and CloudWatch metric names)."
+  }
+}
