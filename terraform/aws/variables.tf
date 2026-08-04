@@ -104,17 +104,18 @@ variable "fleet_waf_members" {
     rate_limit_per_5min = number
   }))
   default = {
-    ebird             = { host = "ebird.codeforanchorage.org", rate_limit_per_5min = 50 }
-    census            = { host = "us-census.codeforanchorage.org", rate_limit_per_5min = 2000 }
-    anchorage-gis     = { host = "anchorage-gis.codeforanchorage.org", rate_limit_per_5min = 600 }
-    anchorage-ecode   = { host = "anchorage-ecode.codeforanchorage.org", rate_limit_per_5min = 300 }
-    anchorage-parcels = { host = "anchorage-parcels.codeforanchorage.org", rate_limit_per_5min = 300 }
-    audubon-iba       = { host = "audubon-iba.codeforanchorage.org", rate_limit_per_5min = 300 }
-    esri-uc           = { host = "esri-uc.codeforanchorage.org", rate_limit_per_5min = 300 }
-    living-atlas      = { host = "living-atlas.codeforanchorage.org", rate_limit_per_5min = 300 }
-    sandiego-city     = { host = "sandiego-city-gis.codeforanchorage.org", rate_limit_per_5min = 300 }
-    sandiego-regional = { host = "sandiego-regional-gis.codeforanchorage.org", rate_limit_per_5min = 300 }
-    worcester         = { host = "worcester-gis.codeforanchorage.org", rate_limit_per_5min = 300 }
+    ebird               = { host = "ebird.codeforanchorage.org", rate_limit_per_5min = 50 }
+    census              = { host = "us-census.codeforanchorage.org", rate_limit_per_5min = 2000 }
+    anchorage-gis       = { host = "anchorage-gis.codeforanchorage.org", rate_limit_per_5min = 600 }
+    anchorage-checkbook = { host = "checkbook.codeforanchorage.org", rate_limit_per_5min = 300 }
+    anchorage-ecode     = { host = "anchorage-ecode.codeforanchorage.org", rate_limit_per_5min = 300 }
+    anchorage-parcels   = { host = "anchorage-parcels.codeforanchorage.org", rate_limit_per_5min = 300 }
+    audubon-iba         = { host = "audubon-iba.codeforanchorage.org", rate_limit_per_5min = 300 }
+    esri-uc             = { host = "esri-uc.codeforanchorage.org", rate_limit_per_5min = 300 }
+    living-atlas        = { host = "living-atlas.codeforanchorage.org", rate_limit_per_5min = 300 }
+    sandiego-city       = { host = "sandiego-city-gis.codeforanchorage.org", rate_limit_per_5min = 300 }
+    sandiego-regional   = { host = "sandiego-regional-gis.codeforanchorage.org", rate_limit_per_5min = 300 }
+    worcester           = { host = "worcester-gis.codeforanchorage.org", rate_limit_per_5min = 300 }
   }
 
   validation {
