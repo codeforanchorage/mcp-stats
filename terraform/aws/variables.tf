@@ -96,7 +96,7 @@ variable "fleet_waf_members" {
     serves on — a mismatch silently means that MCP is only covered by the
     catch-all rule.
 
-    Defaults mirror each repo's prod.tfvars as of 2026-07-28. When onboarding a
+    Defaults mirror each repo's prod.tfvars as of 2026-08-23. When onboarding a
     new MCP, add it here and apply BEFORE flipping the repo to the shared WAF.
   EOT
   type = map(object({
@@ -106,7 +106,7 @@ variable "fleet_waf_members" {
   default = {
     ebird               = { host = "ebird.codeforanchorage.org", rate_limit_per_5min = 50 }
     census              = { host = "us-census.codeforanchorage.org", rate_limit_per_5min = 2000 }
-    anchorage-gis       = { host = "anchorage-gis.codeforanchorage.org", rate_limit_per_5min = 600 }
+    anchorage-gis       = { host = "anchorage-gis.codeforanchorage.org", rate_limit_per_5min = 300 }
     anchorage-checkbook = { host = "checkbook.codeforanchorage.org", rate_limit_per_5min = 300 }
     anchorage-ecode     = { host = "anchorage-ecode.codeforanchorage.org", rate_limit_per_5min = 300 }
     anchorage-parcels   = { host = "anchorage-parcels.codeforanchorage.org", rate_limit_per_5min = 300 }
