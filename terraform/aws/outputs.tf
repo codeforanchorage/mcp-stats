@@ -48,5 +48,8 @@ output "saved_query_names" {
     aws_cloudwatch_query_definition.top_source_ips.name,
     aws_cloudwatch_query_definition.real_tool_calls_per_day.name,
     aws_cloudwatch_query_definition.real_user_sessions_per_day.name,
+    aws_cloudwatch_query_definition.real_server_errors.name,
+    aws_cloudwatch_query_definition.real_server_errors_per_day.name,
+    aws_cloudwatch_query_definition.protocol_rejections.name,
   ]
 }
