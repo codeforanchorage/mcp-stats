@@ -59,14 +59,22 @@ All MCP repos carry the `Project = mcp-server` tag. With the default
 | San Diego Regional GIS | `/aws/lambda/sandiego-gis-mcp-prod`        | `sourceIp`, `userAgent`    |
 | San Diego City GIS     | `/aws/lambda/sandiego-city-gis-mcp-prod`   | `sourceIp`, `userAgent`    |
 | Worcester GIS          | `/aws/lambda/worcester-gis-mcp-prod`       | `sourceIp`, `userAgent`    |
+| ESRI Living Atlas      | `/aws/lambda/living-atlas-mcp-prod`        | `sourceIp`, `userAgent`    |
+| ESRI UC 2026           | `/aws/lambda/esri-uc-mcp-prod`             | `sourceIp`, `userAgent`    |
+| Anchorage Checkbook    | `/aws/lambda/anchorage-checkbook-mcp-prod` | `sourceIp`, `userAgent`    |
 | Boston OpenData        | `/aws/lambda/boston-opencontext-mcp-prod`  | `ip` only (no `userAgent`) |
 | Census                 | `/aws/lambda/census-mcp-prod`              | `ip` only (no `userAgent`) |
 
-The five servers added 2026-07-13 (Anchorage Parcels, Anchorage eCode,
-Audubon IBA, both San Diego GIS servers) all run the shared Python `core/`
-codebase: their Lambda logs carry the full `jsonrpc_*` fields and their
-access logs emit `sourceIp` + `userAgent`, so every widget and saved query
-covers them with no schema gaps.
+That is 13 MCPs, matching `discovered_mcp_count`. If this table and that
+output disagree, the output is right — it is what discovery actually
+resolved on the last apply.
+
+The seven servers added 2026-07-13 (Anchorage Parcels, Anchorage eCode,
+Audubon IBA, both San Diego GIS servers, ESRI UC 2026, ESRI Living Atlas)
+and Anchorage Checkbook, which joined later, all run the shared Python
+`core/` codebase: their Lambda logs carry the full `jsonrpc_*` fields and
+their access logs emit `sourceIp` + `userAgent`, so every widget and saved
+query covers them with no schema gaps.
 
 Known gaps / variances:
 
