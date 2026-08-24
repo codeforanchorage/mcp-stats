@@ -148,3 +148,104 @@ resource "aws_cloudwatch_query_definition" "top_source_ips" {
     | limit 50
   EOT
 }
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Error triage — client-fault rejections vs real server faults.
+#
+# Nearly all of the fleet's WARNING/ERROR volume is a well-behaved client
+# being told "no", not the server breaking. Over a representative 7-day
+# window: 363 WARNING/ERROR lines fleet-wide, of which 358 were protocol
+# rejections and only 5 were genuine server faults. Anything that reads raw
+# error level as a health signal is therefore reading ~99% noise.
+#
+# The dominant rejection is `server/discover`, a 2026-07-28-era MCP method no
+# MCP in this fleet implements. Every MCP receives it, continuously, from
+# Claude clients probing before falling back to the `initialize` handshake.
+# It is expected traffic and must never page anyone.
+#
+# Classification cannot key on `levelname` or `error_type` alone, because
+# THREE logging eras coexist in the fleet at once:
+#   - old shared core      → ERROR   + error_type=ValueError            (most MCPs)
+#   - Boston's core        → ERROR   + error_type=MethodNotFoundError
+#   - Anchorage GIS core   → WARNING + error_type=MethodNotFoundError   (2026-08-24+)
+# As the rest of the fleet picks up the newer core these will migrate from
+# ERROR to WARNING. Matching on the message as well as the type keeps these
+# queries stable across that rollout instead of silently changing meaning.
+#
+# HTTP-level rejections are matched by the leading status code (written
+# `/^4[0-9][0-9]/` rather than `/^4\d\d/`, so the identical string also works
+# inside dashboard.tf's Terraform double-quoted widget queries, where a bare
+# backslash-d is not a valid escape)
+# rather than by wording, because the wording is NOT uniform: eBird's handler
+# logs "400: Unsupported MCP-Protocol-Version" while the shared core logs
+# "400 error: unsupported MCP-Protocol-Version". The prefix rule also picks
+# up 403 (disallowed Origin), 404 (bad path) and 405 (bad HTTP verb) without
+# needing a new clause for each.
+#
+# The two queries below partition the same input exactly — every WARNING/
+# ERROR/CRITICAL line lands in precisely one of them, verified against live
+# logs (358 + 5 = 363). If you add a new rejection path to any MCP, re-run
+# both and confirm the totals still add up.
+# ─────────────────────────────────────────────────────────────────────────────
+
+resource "aws_cloudwatch_query_definition" "real_server_errors" {
+  name            = "mcp-fleet/errors/real-server-errors"
+  log_group_names = local.mcp_lambda_log_groups
+
+  # The actionable one: genuine faults, with every known client-fault
+  # rejection subtracted. coalesce() guards the comparison because
+  # `error_type` is absent on most lines, and a bare `!=` against a missing
+  # field drops the row instead of keeping it.
+  query_string = <<-EOT
+    filter levelname in ['ERROR', 'CRITICAL']
+    | filter coalesce(error_type, '') != 'MethodNotFoundError'
+    | filter not (message like /Unknown method/)
+    | filter not (message like /^4[0-9][0-9]/)
+    | stats count(*) as errors
+            by @log,
+               coalesce(error_type, '(none)') as error_type,
+               substr(message, 0, 80) as sample
+    | sort errors desc
+    | limit 100
+  EOT
+}
+
+resource "aws_cloudwatch_query_definition" "real_server_errors_per_day" {
+  name            = "mcp-fleet/errors/real-server-errors-per-day"
+  log_group_names = local.mcp_lambda_log_groups
+
+  # Same filter as above, as a per-MCP daily trend — this is the series worth
+  # watching for a regression after a deploy. At current volume a normal day
+  # is 0-2 fleet-wide, so any visible step change is real.
+  query_string = <<-EOT
+    filter levelname in ['ERROR', 'CRITICAL']
+    | filter coalesce(error_type, '') != 'MethodNotFoundError'
+    | filter not (message like /Unknown method/)
+    | filter not (message like /^4[0-9][0-9]/)
+    | stats count(*) as errors by bin(1d), @log
+    | sort @timestamp asc
+  EOT
+}
+
+resource "aws_cloudwatch_query_definition" "protocol_rejections" {
+  name            = "mcp-fleet/errors/protocol-rejections"
+  log_group_names = local.mcp_lambda_log_groups
+
+  # The noise, kept visible rather than discarded: a spike here is a client
+  # or crawler behaviour change worth knowing about, just never a server
+  # fault. Labelled by `jsonrpc_method` where the line has one (so unknown
+  # methods read as 'server/discover' rather than a truncated log message),
+  # falling back to the message prefix for HTTP-level rejections that never
+  # reached JSON-RPC dispatch.
+  query_string = <<-EOT
+    filter levelname in ['WARNING', 'ERROR', 'CRITICAL']
+    | filter coalesce(error_type, '') = 'MethodNotFoundError'
+          or message like /Unknown method/
+          or message like /^4[0-9][0-9]/
+    | stats count(*) as rejections
+            by coalesce(jsonrpc_method, substr(message, 0, 18)) as rejection,
+               @log
+    | sort rejections desc
+    | limit 100
+  EOT
+}

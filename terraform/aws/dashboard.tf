@@ -42,9 +42,13 @@ locals {
 
   ebird_quota_widgets = local.ebird_lambda_source == "" ? [] : [
     {
-      type   = "log"
-      x      = 0
-      y      = 30
+      type = "log"
+      x    = 0
+      # Sits BELOW the fixed rows (last fixed row is y=30). This widget is
+      # conditional, so it must be last in layout order as well as last in
+      # the widget list — otherwise dropping eBird from the discovered scope
+      # would leave a hole in the middle of the dashboard.
+      y      = 36
       width  = 24
       height = 6
       properties = {
@@ -274,6 +278,64 @@ resource "aws_cloudwatch_dashboard" "fleet_usage" {
             "| filter jsonrpc_method = 'tools/call' and ispresent(mcp_session_id)",
             "| stats count_distinct(mcp_session_id) as real_sessions by bin(1d), @log",
             "| sort @timestamp asc",
+          ])
+        }
+      },
+
+      # ── Row 6: error triage — real faults vs client-fault rejections ────
+      # Fleet WARNING/ERROR volume is ~99% well-behaved clients being told
+      # "no" — see the "Error triage" block in queries.tf for the numbers and
+      # the three-logging-era caveat. These two widgets keep the populations
+      # apart so a genuine regression is visible instead of being buried
+      # under `server/discover` probes.
+      #
+      # The status-code test is written `[0-9][0-9]`, not `\d\d`: these query
+      # strings are Terraform double-quoted strings, where a bare backslash-d
+      # is not a valid escape. queries.tf uses the same form so the two stay
+      # copy-pasteable between here and there.
+      {
+        type   = "log"
+        x      = 0
+        y      = 30
+        width  = 12
+        height = 6
+        properties = {
+          title   = "Real server errors per day by MCP (client-fault rejections stripped — normally 0-2 fleet-wide, so any step change is real)"
+          region  = var.aws_region
+          view    = "timeSeries"
+          stacked = true
+          query = join("\n", [
+            "${local.lambda_source}",
+            "| filter levelname in ['ERROR', 'CRITICAL']",
+            "| filter coalesce(error_type, '') != 'MethodNotFoundError'",
+            "| filter not (message like /Unknown method/)",
+            "| filter not (message like /^4[0-9][0-9]/)",
+            "| stats count(*) as errors by bin(1d), @log",
+            "| sort @timestamp asc",
+          ])
+        }
+      },
+      {
+        type   = "log"
+        x      = 12
+        y      = 30
+        width  = 12
+        height = 6
+        properties = {
+          # Labelled by jsonrpc_method where the line has one, so unknown
+          # methods read as 'server/discover' rather than a truncated log
+          # message; HTTP-level rejections that never reached JSON-RPC
+          # dispatch fall back to the message prefix.
+          title  = "Protocol rejections by kind (expected client-fault traffic — a spike means client/crawler behaviour changed, never a server fault)"
+          region = var.aws_region
+          view   = "table"
+          query = join("\n", [
+            "${local.lambda_source}",
+            "| filter levelname in ['WARNING', 'ERROR', 'CRITICAL']",
+            "| filter coalesce(error_type, '') = 'MethodNotFoundError' or message like /Unknown method/ or message like /^4[0-9][0-9]/",
+            "| stats count(*) as rejections by coalesce(jsonrpc_method, substr(message, 0, 18)) as rejection, @log",
+            "| sort rejections desc",
+            "| limit 50",
           ])
         }
       },
