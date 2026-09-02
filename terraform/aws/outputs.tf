@@ -53,3 +53,13 @@ output "saved_query_names" {
     aws_cloudwatch_query_definition.protocol_rejections.name,
   ]
 }
+
+output "fleet_alarm_topic_arn" {
+  description = "SNS topic the fleet MCP-route 4xx alarms notify (created here unless fleet_alarm_sns_topic_arn was supplied)."
+  value       = local.fleet_alarm_topic_arn
+}
+
+output "mcp_4xx_alarm_names" {
+  description = "Names of the per-MCP `POST /mcp` 4xx alarms, one per discovered access log group."
+  value       = sort([for a in aws_cloudwatch_metric_alarm.mcp_post_4xx : a.alarm_name])
+}
