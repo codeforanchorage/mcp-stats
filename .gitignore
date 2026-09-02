@@ -13,6 +13,7 @@ override.tf.json
 
 # Local variable files that may carry environment-specific values.
 *.tfvars.local
+*.auto.tfvars
 
 # Local, per-developer Claude Code settings.
 .claude/settings.local.json

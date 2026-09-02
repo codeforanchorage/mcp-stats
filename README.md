@@ -24,6 +24,14 @@ groups the MCPs already emit:
    family, top source IPs.
 3. **Saved Logs Insights queries** (`queries.tf`) — the cross-MCP versions
    of each MCP repo's per-MCP "Tier 1 usage tracking" queries.
+4. **Fleet MCP-route 4xx alarms** (`mcp_4xx_alarms.tf`) — for every
+   discovered access log group, a metric filter counting 4xx responses on
+   `POST /mcp` only, an alarm on it (>= 100 per 5 min by default), and one
+   shared SNS topic `mcp-fleet-alarms` they all notify. This is the signal
+   the per-repo `apigw-4xx-probing` alarms were after, minus the edge 403s
+   that web-vulnerability scanners generate walking `/.env`-style paths —
+   those never reach `/mcp`, so they no longer page. Metric filters have no
+   backfill; verify a pattern with `aws logs test-metric-filter`.
 
 ## How discovery works
 
@@ -119,6 +127,17 @@ terraform apply
 ```
 
 `terraform output dashboard_url` prints the console link once applied.
+
+The fleet alarm email lives in a gitignored, auto-loaded
+`terraform/aws/*.auto.tfvars` (`fleet_alarm_email = "..."`) so it stays out
+of the public repo. The first apply creates an SNS email subscription that
+sits in `PendingConfirmation` until the confirmation link in the email is
+clicked; until then the alarms fire but deliver nothing. Pass
+`fleet_alarm_sns_topic_arn` instead to reuse an existing topic — the live
+deployment does this, pointing at `anchorage-gis-mcp-prod-alarms` (owned by
+the anchorage-gis repo, already confirmed) because the confirmation email
+for a fresh topic never arrived. If that repo's topic is ever destroyed,
+clear the variable and re-apply to fall back to a project-owned topic.
 
 ## Guardrails
 

@@ -123,3 +123,53 @@ variable "fleet_waf_members" {
     error_message = "fleet_waf_members keys must match [A-Za-z0-9_-]+ (they become WAF rule and CloudWatch metric names)."
   }
 }
+
+# ─── Fleet MCP-route 4xx alarms (see mcp_4xx_alarms.tf) ─────────────────────
+
+variable "enable_mcp_4xx_alarms" {
+  description = <<-EOT
+    Create, for every discovered API Gateway access log group, a metric filter
+    counting 4xx responses on `POST /mcp` plus an alarm on it. Replaces the
+    per-repo `apigw-4xx-probing` alarms' signal without their edge-scanner noise.
+  EOT
+  type        = bool
+  default     = true
+}
+
+variable "mcp_4xx_alarm_threshold" {
+  description = "Alarm when the count of 4xx responses on POST /mcp in one period reaches this value."
+  type        = number
+  default     = 100
+}
+
+variable "mcp_4xx_alarm_period_seconds" {
+  description = "Evaluation period for the MCP-route 4xx alarms, in seconds. One period is evaluated."
+  type        = number
+  default     = 300
+}
+
+variable "fleet_alarm_sns_topic_arn" {
+  description = <<-EOT
+    ARN of an existing SNS topic the fleet alarms should notify. Leave empty
+    (the default) to have this project create its own `fleet_alarm_sns_topic_name`
+    topic and, if `fleet_alarm_email` is set, an email subscription to it.
+  EOT
+  type        = string
+  default     = ""
+}
+
+variable "fleet_alarm_sns_topic_name" {
+  description = "Name of the SNS topic created when `fleet_alarm_sns_topic_arn` is empty."
+  type        = string
+  default     = "mcp-fleet-alarms"
+}
+
+variable "fleet_alarm_email" {
+  description = <<-EOT
+    Email address subscribed to the project-created fleet alarm topic. Ignored
+    when `fleet_alarm_sns_topic_arn` is supplied. Keep the value out of git —
+    put it in a `*.auto.tfvars` file, which is gitignored and auto-loaded.
+  EOT
+  type        = string
+  default     = ""
+}
