@@ -125,6 +125,7 @@ Repos, and the `fleet_waf_members` key each maps to:
 | `anchorage-parcels-mcp` | `anchorage-parcels` |
 | `ecode/OpenContext` | `anchorage-ecode` |
 | `gis_mcp/OpenContext` | `anchorage-gis` |
+| `alaska-geoportal-mcp` | `alaska-geoportal` |
 | `census-mcp-lambda` | `census` |
 | `ebird_aws` | `ebird` |
 
