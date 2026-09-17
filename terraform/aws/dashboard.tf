@@ -97,7 +97,7 @@ resource "aws_cloudwatch_dashboard" "fleet_usage" {
         width  = 12
         height = 6
         properties = {
-          title   = "Sessions per day — whole fleet (distinct mcp_session_id; includes claude.ai's twice-daily connector refresh — see Row 5 for real usage)"
+          title   = "Sessions per day — whole fleet (distinct mcp_session_id; includes claude.ai's twice-daily connector refresh — see Row 5 for real usage; 2026-07-28-era traffic has no session id and is not counted)"
           region  = var.aws_region
           view    = "timeSeries"
           stacked = false
@@ -131,6 +131,13 @@ resource "aws_cloudwatch_dashboard" "fleet_usage" {
       },
 
       # ── Row 2: per-MCP sessions + per-MCP request volume ────────────────
+      # Session ids exist only in the legacy (initialize-handshake) era. The
+      # stateless 2026-07-28 revision has none, so on dual-era cores
+      # (Anchorage GIS since 2026-09-17) every claude.ai / claude-code
+      # session is invisible to the mcp_session_id widgets here and in
+      # Row 1 / Row 5. Judge those MCPs by tool calls (Row 5, left) and by
+      # the client-family widget (Row 3, right), which counts session opens
+      # in both eras.
       {
         type   = "log"
         x      = 0
@@ -195,25 +202,37 @@ resource "aws_cloudwatch_dashboard" "fleet_usage" {
         width  = 12
         height = 6
         properties = {
-          title  = "MCP client family — whole fleet (clientInfo.name on initialize; excludes mcpregistry crawler)"
+          title  = "MCP client family — whole fleet (session opens: initialize OR server/discover; excludes mcpregistry crawler)"
           region = var.aws_region
           view   = "bar"
-          # The `mcpregistry` crawler accounts for ~40%+ of all initialize
-          # handshakes (it connects, enumerates tools/list, and disconnects
-          # without ever calling a tool), which drowns out real human clients.
-          # Filter it out so this widget reflects actual client families.
+          # A "session open" is `initialize` (legacy handshake, MCP revisions
+          # <= 2025-11-25) OR `server/discover` (the stateless 2026-07-28
+          # revision, which has no handshake). Dual-era cores (Anchorage GIS
+          # since 2026-09-17) serve both; claude.ai and claude-code open with
+          # server/discover against those and never send initialize again,
+          # so a widget keyed on initialize alone loses them MCP by MCP as
+          # the dual-era core rolls out.
+          # The client name comes from the flattened `mcp_client_name` field
+          # (dual-era cores stamp it on every "request received" line in both
+          # eras) with a fallback to `jsonrpc_params.clientInfo.name` for
+          # older cores that only carry it inside the initialize params.
+          # The `mcpregistry` crawler accounts for ~40%+ of all handshakes
+          # (it connects, enumerates tools/list, and disconnects without ever
+          # calling a tool), which drowns out real human clients. Filter it
+          # out so this widget reflects actual client families.
           # NOTE: 'mcpregistry' is single-quoted = a literal string; double
           # quotes would be read as a FIELD reference and silently match nothing.
-          # ispresent(client) drops the blank bucket that response log lines
-          # (no jsonrpc_params) and anonymous clients (no clientInfo) share —
-          # it dwarfed the named bars without meaning anything.
+          # The message filter keeps the request line of each request/response
+          # pair (the response line has no client fields); ispresent(client)
+          # drops anonymous clients that send no clientInfo.
           query = join("\n", [
             "${local.lambda_source}",
-            "| fields jsonrpc_params.clientInfo.name as client",
-            "| filter jsonrpc_method = 'initialize' and ispresent(client)",
+            "| fields coalesce(mcp_client_name, jsonrpc_params.clientInfo.name) as client",
+            "| filter jsonrpc_method in ['initialize', 'server/discover']",
+            "| filter message = 'JSON-RPC request received' and ispresent(client)",
             "| filter client != 'mcpregistry'",
-            "| stats count(*) as initializes by client",
-            "| sort initializes desc",
+            "| stats count(*) as session_opens by client",
+            "| sort session_opens desc",
           ])
         }
       },
@@ -281,7 +300,7 @@ resource "aws_cloudwatch_dashboard" "fleet_usage" {
           # Requires the session id to be present, so Boston (doesn't propagate
           # mcp_session_id) and Census (Node.js codebase, no jsonrpc_* fields)
           # under-count here — same gaps as the other Lambda-log widgets.
-          title   = "Real user sessions per day by MCP (distinct mcp_session_id with ≥1 tools/call; Boston/Census under-count)"
+          title   = "Real user sessions per day by MCP (distinct mcp_session_id with ≥1 tools/call; Boston/Census under-count; 2026-07-28-era sessions have no id — Anchorage GIS since 2026-09-17)"
           region  = var.aws_region
           view    = "timeSeries"
           stacked = true
@@ -338,7 +357,9 @@ resource "aws_cloudwatch_dashboard" "fleet_usage" {
           # methods read as 'server/discover' rather than a truncated log
           # message; then by the parsed protocol-version string, so the
           # newer core's "400 unsupported MCP-Protocol-Version" rejection
-          # (the fleet's top rejection since the 2026-08-24 core) is ONE row
+          # (the fleet's top rejection since the 2026-08-24 core; gone from
+          # each MCP as it picks up the dual-era core — Anchorage GIS first,
+          # 2026-09-17) is ONE row
           # regardless of how each MCP words the 400; HTTP-level rejections
           # that match neither fall back to the message prefix.
           title  = "Protocol rejections by kind (expected client-fault traffic — a spike means client/crawler behaviour changed, never a server fault)"

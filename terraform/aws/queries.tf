@@ -16,6 +16,12 @@
 #     userAgent-based "client" proxy degrades to IP-only for MCPs that omit it.
 #   - "sessions" is per-connection (mcp_session_id minted on `initialize`),
 #     not per-conversation. Clients reconnect routinely; expect overcounting.
+#     The opposite bias applies on dual-era cores (Anchorage GIS since
+#     2026-09-17): the stateless MCP 2026-07-28 revision has NO session id,
+#     and claude.ai / claude-code use it whenever the server offers it, so
+#     every mcp_session_id-based query silently drops those sessions. Use
+#     tools/call counts and `client-family-breakdown` (which counts session
+#     opens in both eras) for those MCPs.
 #   - Census MCP runs a different (Node.js) codebase from the shared Python
 #     `core/`. If its Lambda logs do not carry identical `jsonrpc_*` field
 #     names, the Lambda-log queries simply return no rows for it — non-fatal.
@@ -65,20 +71,32 @@ resource "aws_cloudwatch_query_definition" "client_family_breakdown" {
   name            = "mcp-fleet/usage/client-family-breakdown"
   log_group_names = local.mcp_lambda_log_groups
 
-  # The `mcpregistry` crawler accounts for ~40%+ of all initialize handshakes
-  # (it connects, enumerates tools/list, and disconnects without ever calling a
+  # Counts SESSION OPENS in both protocol eras: `initialize` (legacy
+  # handshake, revisions <= 2025-11-25) and `server/discover` (the stateless
+  # 2026-07-28 revision, no handshake). Dual-era cores (Anchorage GIS since
+  # 2026-09-17) serve both, and claude.ai / claude-code open with
+  # server/discover against them and never send initialize again — an
+  # initialize-only query loses those clients MCP by MCP as the core rolls out.
+  # Client identity comes from the flattened `mcp_client_name` /
+  # `mcp_client_version` fields (stamped on every "request received" line by
+  # dual-era cores, both eras) with a fallback to jsonrpc_params.clientInfo.*
+  # for older cores that only carry it inside the initialize params. The
+  # message filter keeps the request line of each request/response pair.
+  # The `mcpregistry` crawler accounts for ~40%+ of all handshakes (it
+  # connects, enumerates tools/list, and disconnects without ever calling a
   # tool), drowning out real human clients — so it is filtered out here to match
   # the dashboard's client-family widget. 'mcpregistry' is single-quoted = a
   # literal string; double quotes would be read as a FIELD reference and
   # silently match nothing.
   query_string = <<-EOT
     fields @timestamp,
-           jsonrpc_params.clientInfo.name as client,
-           jsonrpc_params.clientInfo.version as version
-    | filter jsonrpc_method = 'initialize' and ispresent(client)
+           coalesce(mcp_client_name, jsonrpc_params.clientInfo.name) as client,
+           coalesce(mcp_client_version, jsonrpc_params.clientInfo.version) as version
+    | filter jsonrpc_method in ['initialize', 'server/discover']
+    | filter message = 'JSON-RPC request received' and ispresent(client)
     | filter client != 'mcpregistry'
-    | stats count(*) as initializes by client, version
-    | sort initializes desc
+    | stats count(*) as session_opens by client, version
+    | sort session_opens desc
   EOT
 }
 
@@ -113,7 +131,8 @@ resource "aws_cloudwatch_query_definition" "real_user_sessions_per_day" {
   # distinct mcp_session_id appearing on at least one tools/call line. Requires
   # the session id to be present, so Boston (doesn't propagate mcp_session_id)
   # and Census (Node.js codebase, no jsonrpc_* fields) under-count here, the
-  # same gaps as the other Lambda-log queries.
+  # same gaps as the other Lambda-log queries. So do dual-era cores (Anchorage
+  # GIS since 2026-09-17): 2026-07-28-era sessions carry no session id at all.
   query_string = <<-EOT
     filter jsonrpc_method = 'tools/call' and ispresent(mcp_session_id)
     | stats count_distinct(mcp_session_id) as real_sessions by bin(1d), @log
@@ -166,10 +185,14 @@ resource "aws_cloudwatch_query_definition" "top_source_ips" {
 #     later and succeeds. ~636 of these fleet-wide over 2026-09-03..17, about
 #     15% of all POST /mcp. Not user-breaking, but it is a core regression to
 #     fix; `protocol_version_400s_per_day` below tracks it so the fix can be
-#     confirmed as the count drops to zero MCP by MCP.
-#   - `server/discover`, a 2026-07-28-era MCP method no MCP in this fleet
-#     implements. Older-core MCPs never validate the header, so they reach
-#     JSON-RPC dispatch and log MethodNotFound for it instead of a 400.
+#     confirmed as the count drops to zero MCP by MCP. The fix is the
+#     dual-era core (serves 2026-07-28 statelessly alongside the legacy
+#     handshake); Anchorage GIS deployed it 2026-09-17 and its count is now
+#     zero, the other MCPs follow as they pick it up.
+#   - `server/discover`, the 2026-07-28-era replacement for initialize.
+#     Dual-era MCPs serve it (Anchorage GIS since 2026-09-17); the rest do
+#     not. Older-core MCPs never validate the header, so they reach JSON-RPC
+#     dispatch and log MethodNotFound for it instead of a 400.
 # Both are expected client traffic and must never page anyone.
 #
 # Classification cannot key on `levelname` or `error_type` alone, because

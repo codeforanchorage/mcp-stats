@@ -114,9 +114,13 @@ Known gaps / variances:
   "unique clients". Judge adoption from the Row 5 `tools/call`-only widgets
   and the `real-*` saved queries; the rest measure connectivity.
 - **Newer-core MCPs reject `MCP-Protocol-Version: 2026-07-28` with a 400**
-  (core from 2026-08-24 on; as of 2026-09-17 that is Anchorage GIS, eBird,
-  Anchorage Parcels/eCode/Checkbook, both San Diego servers and Alaska
-  Geoportal). The first request of every claude.ai / claude-code session
+  (core from 2026-08-24 on; as of 2026-09-17 that is eBird, Anchorage
+  Parcels/eCode/Checkbook, both San Diego servers and Alaska Geoportal.
+  Anchorage GIS deployed the dual-era core on 2026-09-17 and now serves
+  2026-07-28 — its count is zero, and claude.ai sessions against it open
+  with `server/discover` and carry NO `mcp_session_id`, so the
+  session-id-based widgets under-count it; the client-family widget and
+  `client-family-breakdown` query count session opens in both eras). The first request of every claude.ai / claude-code session
   gets the 400, the client retries with an older version about a second
   later and succeeds, so nothing is user-visible — but it is ~15% of all
   `POST /mcp`, inflates the fleet 4xx metric, and is the top row of the
