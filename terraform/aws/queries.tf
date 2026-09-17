@@ -158,10 +158,19 @@ resource "aws_cloudwatch_query_definition" "top_source_ips" {
 # rejections and only 5 were genuine server faults. Anything that reads raw
 # error level as a health signal is therefore reading ~99% noise.
 #
-# The dominant rejection is `server/discover`, a 2026-07-28-era MCP method no
-# MCP in this fleet implements. Every MCP receives it, continuously, from
-# Claude clients probing before falling back to the `initialize` handshake.
-# It is expected traffic and must never page anyone.
+# Two rejections dominate, and which one an MCP shows depends on its core:
+#   - `400 unsupported MCP-Protocol-Version '2026-07-28'` — the newer shared
+#     core (2026-08-24+) validates the protocol-version header and does not
+#     list 2026-07-28, so the FIRST request of every Claude.ai / claude-code
+#     session gets a 400, then the client retries with an older version ~1s
+#     later and succeeds. ~636 of these fleet-wide over 2026-09-03..17, about
+#     15% of all POST /mcp. Not user-breaking, but it is a core regression to
+#     fix; `protocol_version_400s_per_day` below tracks it so the fix can be
+#     confirmed as the count drops to zero MCP by MCP.
+#   - `server/discover`, a 2026-07-28-era MCP method no MCP in this fleet
+#     implements. Older-core MCPs never validate the header, so they reach
+#     JSON-RPC dispatch and log MethodNotFound for it instead of a 400.
+# Both are expected client traffic and must never page anyone.
 #
 # Classification cannot key on `levelname` or `error_type` alone, because
 # THREE logging eras coexist in the fleet at once:
@@ -235,17 +244,39 @@ resource "aws_cloudwatch_query_definition" "protocol_rejections" {
   # or crawler behaviour change worth knowing about, just never a server
   # fault. Labelled by `jsonrpc_method` where the line has one (so unknown
   # methods read as 'server/discover' rather than a truncated log message),
-  # falling back to the message prefix for HTTP-level rejections that never
-  # reached JSON-RPC dispatch.
+  # then by the protocol-version string the `parse` pulls out (so eBird's
+  # "400: Unsupported MCP-Protocol-Version '…'" and the shared core's
+  # "400 error: unsupported MCP-Protocol-Version '…'" collapse into ONE row
+  # instead of two 18-character prefixes), and only then by the message
+  # prefix for the remaining HTTP-level rejections (403 Origin, 405 GET).
   query_string = <<-EOT
     filter levelname in ['WARNING', 'ERROR', 'CRITICAL']
     | filter coalesce(error_type, '') = 'MethodNotFoundError'
           or message like /Unknown method/
           or message like /^4[0-9][0-9]/
+    | parse message /(?<proto_version>MCP-Protocol-Version '[^']*')/
     | stats count(*) as rejections
-            by coalesce(jsonrpc_method, substr(message, 0, 18)) as rejection,
+            by coalesce(jsonrpc_method, proto_version, substr(message, 0, 18)) as rejection,
                @log
     | sort rejections desc
     | limit 100
+  EOT
+}
+
+resource "aws_cloudwatch_query_definition" "protocol_version_400s_per_day" {
+  name            = "mcp-fleet/errors/protocol-version-400s-per-day"
+  log_group_names = local.mcp_lambda_log_groups
+
+  # Tracks the newer-core regression described above: MCPs still rejecting
+  # MCP-Protocol-Version 2026-07-28 show a steady daily count (one per
+  # Claude.ai / claude-code session start); an MCP drops to zero the day its
+  # core is fixed and redeployed. Once every MCP reads zero for a week this
+  # query has done its job and can be deleted. Matches on the header name,
+  # not the status wording, because eBird and the shared core phrase the 400
+  # differently.
+  query_string = <<-EOT
+    filter message like /MCP-Protocol-Version/
+    | stats count(*) as rejections by bin(1d), @log
+    | sort @timestamp asc
   EOT
 }

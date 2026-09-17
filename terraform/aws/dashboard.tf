@@ -38,17 +38,23 @@ locals {
   # approximation, not an exact remaining-quota gauge. If eBird isn't in the
   # discovered scope, ebird_quota_widgets is empty and the widget is omitted.
   ebird_lambda_log_groups = [for g in local.mcp_lambda_log_groups : g if length(regexall("ebird", g)) > 0]
-  ebird_lambda_source     = join(" | ", [for g in local.ebird_lambda_log_groups : "SOURCE '${g}'"])
+
+  # Lambda function names for the metric widget in Row 7: every MCP names its
+  # Lambda log group `/aws/lambda/<function-name>`, so the function name is
+  # the log group minus that prefix. Derived from the same discovered list so
+  # the widget widens with the fleet and honours var.environment.
+  mcp_lambda_function_names = [for g in local.mcp_lambda_log_groups : trimprefix(g, "/aws/lambda/")]
+  ebird_lambda_source       = join(" | ", [for g in local.ebird_lambda_log_groups : "SOURCE '${g}'"])
 
   ebird_quota_widgets = local.ebird_lambda_source == "" ? [] : [
     {
       type = "log"
       x    = 0
-      # Sits BELOW the fixed rows (last fixed row is y=30). This widget is
+      # Sits BELOW the fixed rows (last fixed row is y=36). This widget is
       # conditional, so it must be last in layout order as well as last in
       # the widget list — otherwise dropping eBird from the discovered scope
       # would leave a hole in the middle of the dashboard.
-      y      = 36
+      y      = 42
       width  = 24
       height = 6
       properties = {
@@ -78,6 +84,12 @@ resource "aws_cloudwatch_dashboard" "fleet_usage" {
   dashboard_body = jsonencode({
     widgets = concat([
       # ── Row 1: fleet sessions + fleet unique clients ────────────────────
+      # Both widgets count Claude.ai's background connector refresh as
+      # activity: claude.ai re-runs initialize + tools/list against every
+      # connected MCP about twice a day from Anthropic egress (160.79.106.x,
+      # UA `Claude-User`, clientInfo `Anthropic/ClaudeAI`), never calling a
+      # tool. At current volume that is most of the fleet's sessions and
+      # initializes. Row 5 (tools/call only) is the adoption signal.
       {
         type   = "log"
         x      = 0
@@ -85,7 +97,7 @@ resource "aws_cloudwatch_dashboard" "fleet_usage" {
         width  = 12
         height = 6
         properties = {
-          title   = "Sessions per day — whole fleet (distinct mcp_session_id seen each day)"
+          title   = "Sessions per day — whole fleet (distinct mcp_session_id; includes claude.ai's twice-daily connector refresh — see Row 5 for real usage)"
           region  = var.aws_region
           view    = "timeSeries"
           stacked = false
@@ -104,7 +116,7 @@ resource "aws_cloudwatch_dashboard" "fleet_usage" {
         width  = 12
         height = 6
         properties = {
-          title   = "Unique clients per day — fleet (sourceIp/ip; userAgent where present)"
+          title   = "Unique clients per day — fleet (sourceIp/ip; userAgent where present; claude.ai egress IPs count as clients)"
           region  = var.aws_region
           view    = "timeSeries"
           stacked = false
@@ -324,8 +336,11 @@ resource "aws_cloudwatch_dashboard" "fleet_usage" {
         properties = {
           # Labelled by jsonrpc_method where the line has one, so unknown
           # methods read as 'server/discover' rather than a truncated log
-          # message; HTTP-level rejections that never reached JSON-RPC
-          # dispatch fall back to the message prefix.
+          # message; then by the parsed protocol-version string, so the
+          # newer core's "400 unsupported MCP-Protocol-Version" rejection
+          # (the fleet's top rejection since the 2026-08-24 core) is ONE row
+          # regardless of how each MCP words the 400; HTTP-level rejections
+          # that match neither fall back to the message prefix.
           title  = "Protocol rejections by kind (expected client-fault traffic — a spike means client/crawler behaviour changed, never a server fault)"
           region = var.aws_region
           view   = "table"
@@ -333,10 +348,41 @@ resource "aws_cloudwatch_dashboard" "fleet_usage" {
             "${local.lambda_source}",
             "| filter levelname in ['WARNING', 'ERROR', 'CRITICAL']",
             "| filter coalesce(error_type, '') = 'MethodNotFoundError' or message like /Unknown method/ or message like /^4[0-9][0-9]/",
-            "| stats count(*) as rejections by coalesce(jsonrpc_method, substr(message, 0, 18)) as rejection, @log",
+            "| parse message /(?<proto_version>MCP-Protocol-Version '[^']*')/",
+            "| stats count(*) as rejections by coalesce(jsonrpc_method, proto_version, substr(message, 0, 18)) as rejection, @log",
             "| sort rejections desc",
             "| limit 50",
           ])
+        }
+      },
+
+      # ── Row 7: long-horizon volume from METRICS, not logs ───────────────
+      # Every widget above re-queries Lambda logs, which the MCP repos retain
+      # for only 14 days (access logs: 30 days on most, 14 on Boston/Census),
+      # so the log widgets go blind past two weeks. AWS/Lambda Invocations is
+      # a metric — 15 months of retention at 1h resolution and no scan cost —
+      # so this is the only widget that can show a month-over-month trend.
+      # It counts EVERY invocation (crawler, claude.ai refresh, tools/call
+      # alike), so read it for shape, not adoption: the eBird/Worcester drop
+      # from ~1,500 to ~200 a week in Aug–Sep 2026 was the mcpregistry
+      # crawler changing cadence, not users leaving.
+      {
+        type   = "metric"
+        x      = 0
+        y      = 36
+        width  = 24
+        height = 6
+        properties = {
+          title   = "Lambda invocations per day by MCP (CloudWatch metric — 15-month history; counts crawler + claude.ai refresh + real calls alike)"
+          region  = var.aws_region
+          view    = "timeSeries"
+          stacked = true
+          stat    = "Sum"
+          period  = 86400
+          metrics = [
+            for f in local.mcp_lambda_function_names :
+            ["AWS/Lambda", "Invocations", "FunctionName", f, { label = f }]
+          ]
         }
       },
     ], local.ebird_quota_widgets)

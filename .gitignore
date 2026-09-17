@@ -11,6 +11,9 @@ override.tf.json
 *_override.tf
 *_override.tf.json
 
+# Local backend config — copied from backend.tf.example by setup-backend.sh.
+terraform/aws/backend.tf
+
 # Local variable files that may carry environment-specific values.
 *.tfvars.local
 *.auto.tfvars

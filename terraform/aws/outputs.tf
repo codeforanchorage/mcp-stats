@@ -51,6 +51,7 @@ output "saved_query_names" {
     aws_cloudwatch_query_definition.real_server_errors.name,
     aws_cloudwatch_query_definition.real_server_errors_per_day.name,
     aws_cloudwatch_query_definition.protocol_rejections.name,
+    aws_cloudwatch_query_definition.protocol_version_400s_per_day.name,
   ]
 }
 
