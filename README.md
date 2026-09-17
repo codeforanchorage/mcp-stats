@@ -23,7 +23,9 @@ groups the MCPs already emit:
    clients/day, tool popularity by MCP, per-MCP request volume, client
    family, top source IPs.
 3. **Saved Logs Insights queries** (`queries.tf`) — the cross-MCP versions
-   of each MCP repo's per-MCP "Tier 1 usage tracking" queries.
+   of each MCP repo's per-MCP "Tier 1 usage tracking" queries, plus an
+   error-triage set that separates real server faults from client-fault
+   rejections.
 4. **Fleet MCP-route 4xx alarms** (`mcp_4xx_alarms.tf`) — for every
    discovered access log group, a metric filter counting 4xx responses on
    `POST /mcp` only, an alarm on it (>= 100 per 5 min by default), and one
@@ -70,17 +72,18 @@ All MCP repos carry the `Project = mcp-server` tag. With the default
 | ESRI Living Atlas      | `/aws/lambda/living-atlas-mcp-prod`        | `sourceIp`, `userAgent`    |
 | ESRI UC 2026           | `/aws/lambda/esri-uc-mcp-prod`             | `sourceIp`, `userAgent`    |
 | Anchorage Checkbook    | `/aws/lambda/anchorage-checkbook-mcp-prod` | `sourceIp`, `userAgent`    |
+| Alaska Geoportal       | `/aws/lambda/alaska-geoportal-mcp-prod`    | `sourceIp`, `userAgent`    |
 | Boston OpenData        | `/aws/lambda/boston-opencontext-mcp-prod`  | `ip` only (no `userAgent`) |
 | Census                 | `/aws/lambda/census-mcp-prod`              | `ip` only (no `userAgent`) |
 
-That is 13 MCPs, matching `discovered_mcp_count`. If this table and that
+That is 14 MCPs, matching `discovered_mcp_count`. If this table and that
 output disagree, the output is right — it is what discovery actually
 resolved on the last apply.
 
 The seven servers added 2026-07-13 (Anchorage Parcels, Anchorage eCode,
-Audubon IBA, both San Diego GIS servers, ESRI UC 2026, ESRI Living Atlas)
-and Anchorage Checkbook, which joined later, all run the shared Python
-`core/` codebase: their Lambda logs carry the full `jsonrpc_*` fields and
+Audubon IBA, both San Diego GIS servers, ESRI UC 2026, ESRI Living Atlas),
+Anchorage Checkbook, and Alaska Geoportal (prod since 2026-09-15) all run
+the shared Python `core/` codebase: their Lambda logs carry the full `jsonrpc_*` fields and
 their access logs emit `sourceIp` + `userAgent`, so every widget and saved
 query covers them with no schema gaps.
 
@@ -97,6 +100,30 @@ Known gaps / variances:
   `sourceIp` + `userAgent`; Boston and Census emit `ip` and no `userAgent`.
   Queries normalise with `coalesce(sourceIp, ip)`; the userAgent-based
   "unique client" proxy degrades to IP-only for MCPs that omit it.
+- **Lambda logs are retained for only 14 days** by the MCP repos (access
+  logs: 30 days on most, 14 on Boston and Census), so every log-backed
+  widget and saved query goes blind past two weeks. The dashboard's Row 7
+  reads the `AWS/Lambda Invocations` metric instead (15 months of history)
+  for month-over-month shape; for anything older than 14 days that needs
+  `jsonrpc_*` fields, there is no data — that is what Phase 2 is for.
+- **claude.ai's connector refresh looks like usage but is not.** claude.ai
+  re-runs `initialize` + `tools/list` against every connected MCP about
+  twice a day from Anthropic egress (`160.79.106.x`, user agent
+  `Claude-User`, clientInfo `Anthropic/ClaudeAI`) without calling a tool.
+  At current volume that is most of the fleet's sessions, initializes and
+  "unique clients". Judge adoption from the Row 5 `tools/call`-only widgets
+  and the `real-*` saved queries; the rest measure connectivity.
+- **Newer-core MCPs reject `MCP-Protocol-Version: 2026-07-28` with a 400**
+  (core from 2026-08-24 on; as of 2026-09-17 that is Anchorage GIS, eBird,
+  Anchorage Parcels/eCode/Checkbook, both San Diego servers and Alaska
+  Geoportal). The first request of every claude.ai / claude-code session
+  gets the 400, the client retries with an older version about a second
+  later and succeeds, so nothing is user-visible — but it is ~15% of all
+  `POST /mcp`, inflates the fleet 4xx metric, and is the top row of the
+  protocol-rejections widget. The fix is in the shared core's
+  supported-version list; the saved query
+  `mcp-fleet/errors/protocol-version-400s-per-day` shows each MCP dropping
+  to zero as the fix is deployed, and can be deleted once they all have.
 - **Census runs a different codebase** (Node.js, not the shared Python
   `core/`). If its Lambda logs do not carry identical `jsonrpc_*` field
   names, the Lambda-log widgets simply show no Census rows — non-fatal.
@@ -117,7 +144,7 @@ Known gaps / variances:
 ```bash
 # 1. Bootstrap the (separate) S3 + DynamoDB backend.
 ./scripts/setup-backend.sh
-cp terraform/aws/backend.tf.example terraform/aws/backend.tf   # if not auto-written
+cp terraform/aws/backend.tf.example terraform/aws/backend.tf   # if not auto-written (gitignored)
 
 # 2. Plan and apply.
 cd terraform/aws
