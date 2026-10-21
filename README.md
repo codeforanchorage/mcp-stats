@@ -117,9 +117,12 @@ Known gaps / variances:
   (core from 2026-08-24 on; as of 2026-10-21 that is eBird, Anchorage
   eCode, both San Diego servers and Alaska Geoportal.
   Anchorage GIS deployed the dual-era core on 2026-09-17, and Anchorage
-  Parcels and Anchorage Checkbook on 2026-10-21 (dual-era + the -32022
-  id-echo follow-up, GIS 5520d7e); all three now serve 2026-07-28 — their
-  counts are zero, and
+  Parcels, Anchorage Checkbook and ESRI Living Atlas on 2026-10-21
+  (dual-era + the -32022 id-echo follow-up, GIS 5520d7e; Living Atlas was
+  still on the pre-August core and went through the conformance tier —
+  ping `{}`, config-driven serverInfo, -32601/-32602, Origin 403, version
+  check — the same day); all four now serve 2026-07-28 — their counts are
+  zero, and
   claude.ai sessions against them open with `server/discover` and carry
   NO `mcp_session_id`, so the session-id-based widgets under-count them;
   the client-family widget and `client-family-breakdown` query count
