@@ -175,6 +175,43 @@ the anchorage-gis repo, already confirmed) because the confirmation email
 for a fresh topic never arrived. If that repo's topic is ever destroyed,
 clear the variable and re-apply to fall back to a project-owned topic.
 
+## Fleet probe (health + MCP conformance alarms)
+
+`terraform/aws/fleet_probe.tf` runs `probe/fleet_probe.py` as a Lambda
+(`mcp-fleet-probe`) every 15 minutes. It sends real MCP requests to every
+`fleet_waf_members` host plus `fleet_probe_extra_targets` (Boston) and
+checks the *answers*, which the access-log 4xx alarms can't see:
+
+| check | core | conformance |
+|---|---|---|
+| legacy `initialize` negotiates | ✓ | |
+| `tools/list` returns tools | ✓ | |
+| empty POST is not a 5xx | ✓ | |
+| `server/discover` leads with 2026-07-28 | | ✓ |
+| unknown method → -32601 | | ✓ |
+| `ping` → `{}` | | ✓ |
+| bad `MCP-Protocol-Version` → -32022 echoing the id | | ✓ |
+| empty POST → 400 / -32700 | | ✓ |
+
+Names in `fleet_probe_legacy_only` (default: `census`) get core checks only.
+It never calls `tools/call`, so the "real usage" widgets are unaffected.
+
+Metrics: `MCPFleet/Probe` `FailedChecks` (dim `MCP`) and `ProbeRuns`
+(heartbeat). Alarms: `<mcp>-probe-failing` (2 consecutive failing runs)
+and `mcp-fleet-probe-not-running`, both to the fleet SNS topic. To see why
+one fired, query `/aws/lambda/mcp-fleet-probe` for
+`level = 'ERROR' and mcp = '<name>'` — each line names the failing check
+and quotes the response.
+
+Run it locally against prod at any time (no metrics published):
+
+```bash
+python probe/fleet_probe.py https://anchorage-gis.codeforanchorage.org/mcp
+```
+
+Set `fleet_probe_notify = false` to mute notifications (first apply,
+maintenance windows) without losing the alarm states.
+
 ## Guardrails
 
 - **Separate Terraform state** from every MCP repo — see

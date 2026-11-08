@@ -173,3 +173,44 @@ variable "fleet_alarm_email" {
   type        = string
   default     = ""
 }
+
+variable "enable_fleet_probe" {
+  description = "Run the scheduled fleet probe Lambda (probe/fleet_probe.py) and its per-MCP + heartbeat alarms (fleet_probe.tf)."
+  type        = bool
+  default     = true
+}
+
+variable "fleet_probe_schedule" {
+  description = "EventBridge schedule for the fleet probe. Keep fleet_probe_period_seconds equal to it, or the alarms read empty periods."
+  type        = string
+  default     = "rate(15 minutes)"
+}
+
+variable "fleet_probe_period_seconds" {
+  description = "Alarm period for the probe metrics; must match fleet_probe_schedule (900 = 15 minutes)."
+  type        = number
+  default     = 900
+}
+
+variable "fleet_probe_extra_targets" {
+  description = "Probe targets with no fleet_waf_members entry (no custom domain). modern=false runs core checks only."
+  type = map(object({
+    url    = string
+    modern = bool
+  }))
+  default = {
+    boston = { url = "https://c3xrp8nzdf.execute-api.us-west-2.amazonaws.com/prod/mcp", modern = true }
+  }
+}
+
+variable "fleet_probe_legacy_only" {
+  description = "fleet_waf_members names that get core checks only (up + serving tools), not 2026-07-28 conformance. Remove a name once that server is dual-era."
+  type        = list(string)
+  default     = ["census"]
+}
+
+variable "fleet_probe_notify" {
+  description = "Send fleet-probe alarm/OK notifications to the fleet SNS topic. Set false for the first apply (or maintenance) so freshly created alarms settling INSUFFICIENT_DATA -> OK, and the heartbeat's pre-first-run ALARM, don't email; flip to true once they read OK."
+  type        = bool
+  default     = true
+}

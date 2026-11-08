@@ -7,5 +7,10 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
+    # Zips probe/fleet_probe.py for the fleet probe Lambda (fleet_probe.tf).
+    archive = {
+      source  = "hashicorp/archive"
+      version = "~> 2.4"
+    }
   }
 }
