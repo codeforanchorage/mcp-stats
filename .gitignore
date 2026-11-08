@@ -23,3 +23,4 @@ terraform/aws/backend.tf
 
 # Internal planning doc — kept local, not published.
 BRIEF.md
+.fleet-deploy-logs/
