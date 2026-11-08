@@ -70,13 +70,12 @@ All MCP repos carry the `Project = mcp-server` tag. With the default
 | San Diego City GIS     | `/aws/lambda/sandiego-city-gis-mcp-prod`   | `sourceIp`, `userAgent`    |
 | Worcester GIS          | `/aws/lambda/worcester-gis-mcp-prod`       | `sourceIp`, `userAgent`    |
 | ESRI Living Atlas      | `/aws/lambda/living-atlas-mcp-prod`        | `sourceIp`, `userAgent`    |
-| ESRI UC 2026           | `/aws/lambda/esri-uc-mcp-prod`             | `sourceIp`, `userAgent`    |
 | Anchorage Checkbook    | `/aws/lambda/anchorage-checkbook-mcp-prod` | `sourceIp`, `userAgent`    |
 | Alaska Geoportal       | `/aws/lambda/alaska-geoportal-mcp-prod`    | `sourceIp`, `userAgent`    |
 | Boston OpenData        | `/aws/lambda/boston-opencontext-mcp-prod`  | `ip` only (no `userAgent`) |
 | Census                 | `/aws/lambda/census-mcp-prod`              | `ip` only (no `userAgent`) |
 
-That is 14 MCPs, matching `discovered_mcp_count`. If this table and that
+That is 13 MCPs, matching `discovered_mcp_count`. If this table and that
 output disagree, the output is right — it is what discovery actually
 resolved on the last apply.
 

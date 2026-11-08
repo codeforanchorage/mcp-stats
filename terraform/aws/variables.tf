@@ -112,7 +112,6 @@ variable "fleet_waf_members" {
     anchorage-ecode     = { host = "anchorage-ecode.codeforanchorage.org", rate_limit_per_5min = 300 }
     anchorage-parcels   = { host = "anchorage-parcels.codeforanchorage.org", rate_limit_per_5min = 300 }
     audubon-iba         = { host = "audubon-iba.codeforanchorage.org", rate_limit_per_5min = 300 }
-    esri-uc             = { host = "esri-uc.codeforanchorage.org", rate_limit_per_5min = 300 }
     living-atlas        = { host = "living-atlas.codeforanchorage.org", rate_limit_per_5min = 300 }
     sandiego-city       = { host = "sandiego-city-gis.codeforanchorage.org", rate_limit_per_5min = 300 }
     sandiego-regional   = { host = "sandiego-regional-gis.codeforanchorage.org", rate_limit_per_5min = 300 }
