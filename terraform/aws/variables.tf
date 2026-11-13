@@ -109,7 +109,7 @@ variable "fleet_waf_members" {
     anchorage-gis       = { host = "anchorage-gis.codeforanchorage.org", rate_limit_per_5min = 300 }
     alaska-geoportal    = { host = "alaska-geoportal.codeforanchorage.org", rate_limit_per_5min = 300 }
     anchorage-checkbook = { host = "checkbook.codeforanchorage.org", rate_limit_per_5min = 300 }
-    anchorage-ecode     = { host = "anchorage-ecode.codeforanchorage.org", rate_limit_per_5min = 300 }
+    anchorage-ecode     = { host = "anchorage-ecode.codeforanchorage.org", rate_limit_per_5min = 2000 } # 2026-11-13: attorneys via Claude.ai share Anthropic egress IPs
     anchorage-parcels   = { host = "anchorage-parcels.codeforanchorage.org", rate_limit_per_5min = 300 }
     audubon-iba         = { host = "audubon-iba.codeforanchorage.org", rate_limit_per_5min = 300 }
     living-atlas        = { host = "living-atlas.codeforanchorage.org", rate_limit_per_5min = 300 }
