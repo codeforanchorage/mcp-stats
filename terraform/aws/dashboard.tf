@@ -362,13 +362,20 @@ resource "aws_cloudwatch_dashboard" "fleet_usage" {
           # 2026-09-17) is ONE row
           # regardless of how each MCP words the 400; HTTP-level rejections
           # that match neither fall back to the message prefix.
-          title  = "Protocol rejections by kind (expected client-fault traffic — a spike means client/crawler behaviour changed, never a server fault)"
+          # The fleet probe (probe/fleet_probe.py) provokes two rejections on
+          # every MCP every 15 minutes on purpose -- an unknown method
+          # `probe/no-such` and a bad `MCP-Protocol-Version: 1999-01-01` --
+          # about 190 lines per MCP per day, ~96% of this widget when left in.
+          # Both are dropped by their literal marker so real client
+          # rejections stay readable.
+          title  = "Protocol rejections by kind, fleet probe excluded (expected client-fault traffic — a spike means client/crawler behaviour changed, never a server fault)"
           region = var.aws_region
           view   = "table"
           query = join("\n", [
             "${local.lambda_source}",
             "| filter levelname in ['WARNING', 'ERROR', 'CRITICAL']",
             "| filter coalesce(error_type, '') = 'MethodNotFoundError' or message like /Unknown method/ or message like /^4[0-9][0-9]/",
+            "| filter coalesce(jsonrpc_method, '') != 'probe/no-such' and not (message like /1999-01-01/)",
             "| parse message /(?<proto_version>MCP-Protocol-Version '[^']*')/",
             "| stats count(*) as rejections by coalesce(jsonrpc_method, proto_version, substr(message, 0, 18)) as rejection, @log",
             "| sort rejections desc",

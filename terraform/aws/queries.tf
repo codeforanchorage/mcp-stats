@@ -272,11 +272,17 @@ resource "aws_cloudwatch_query_definition" "protocol_rejections" {
   # "400 error: unsupported MCP-Protocol-Version '…'" collapse into ONE row
   # instead of two 18-character prefixes), and only then by the message
   # prefix for the remaining HTTP-level rejections (403 Origin, 405 GET).
+  # The fleet probe's two deliberate rejections (unknown method
+  # `probe/no-such`, bad version `1999-01-01`; ~190 lines per MCP per day)
+  # are excluded by their literal markers -- left in, they are ~96% of the
+  # rows. So this query plus `real-server-errors` no longer sums to the full
+  # WARNING/ERROR count; the difference is the probe.
   query_string = <<-EOT
     filter levelname in ['WARNING', 'ERROR', 'CRITICAL']
     | filter coalesce(error_type, '') = 'MethodNotFoundError'
           or message like /Unknown method/
           or message like /^4[0-9][0-9]/
+    | filter coalesce(jsonrpc_method, '') != 'probe/no-such' and not (message like /1999-01-01/)
     | parse message /(?<proto_version>MCP-Protocol-Version '[^']*')/
     | stats count(*) as rejections
             by coalesce(jsonrpc_method, proto_version, substr(message, 0, 18)) as rejection,
@@ -296,9 +302,10 @@ resource "aws_cloudwatch_query_definition" "protocol_version_400s_per_day" {
   # core is fixed and redeployed. Once every MCP reads zero for a week this
   # query has done its job and can be deleted. Matches on the header name,
   # not the status wording, because eBird and the shared core phrase the 400
-  # differently.
+  # differently. Excludes the fleet probe's deliberate `1999-01-01` check,
+  # which every MCP correctly rejects 96 times a day.
   query_string = <<-EOT
-    filter message like /MCP-Protocol-Version/
+    filter message like /MCP-Protocol-Version/ and not (message like /1999-01-01/)
     | stats count(*) as rejections by bin(1d), @log
     | sort @timestamp asc
   EOT
