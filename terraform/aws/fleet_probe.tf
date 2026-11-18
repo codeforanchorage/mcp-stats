@@ -149,6 +149,12 @@ resource "aws_cloudwatch_metric_alarm" "fleet_probe_mcp" {
   treat_missing_data  = "notBreaching"
   alarm_actions       = local.fleet_probe_actions
   ok_actions          = local.fleet_probe_actions
+
+  # Cost attribution only. Do NOT put this tag on the probe's log group:
+  # discovery.tf treats every Project-tagged log group as an MCP.
+  tags = {
+    Project = var.project_tag
+  }
 }
 
 resource "aws_cloudwatch_metric_alarm" "fleet_probe_heartbeat" {
@@ -167,4 +173,8 @@ resource "aws_cloudwatch_metric_alarm" "fleet_probe_heartbeat" {
   treat_missing_data  = "breaching"
   alarm_actions       = local.fleet_probe_actions
   ok_actions          = local.fleet_probe_actions
+
+  tags = {
+    Project = var.project_tag
+  }
 }
