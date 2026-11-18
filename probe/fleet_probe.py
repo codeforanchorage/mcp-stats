@@ -192,8 +192,9 @@ def publish(results):
         dims = [{"Name": "MCP", "Value": r["mcp"]}]
         data.append({"MetricName": "FailedChecks", "Dimensions": dims,
                      "Value": r["failed"], "Unit": "Count"})
-        data.append({"MetricName": "ProbeDurationMs", "Dimensions": dims,
-                     "Value": r["duration_ms"], "Unit": "Milliseconds"})
+    # Probe duration is NOT published as a metric: nothing alarmed on it and
+    # 13 extra custom metrics cost ~$3.90/month. It is still in each
+    # "probe ok" / "probe failed" log line as duration_ms.
     for i in range(0, len(data), 20):  # stay well under the per-call limit
         cw.put_metric_data(Namespace=NAMESPACE, MetricData=data[i:i + 20])
 
