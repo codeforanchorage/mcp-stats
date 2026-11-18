@@ -42,8 +42,12 @@ resource "aws_cloudwatch_query_definition" "sessions_per_day" {
   # initialize log line itself doesn't carry one. We instead count distinct
   # session IDs across ALL log lines per day — i.e. "active sessions per
   # day", which is the load metric anyone glancing at this actually wants.
+  # An id must be seen on a request AFTER initialize to count: the fleet
+  # probe opens a new session every 15 min per MCP and never reuses the id
+  # (~1,250 ids/day from 2026-11-08), and its id-bearing lines carry no
+  # jsonrpc_method. Legacy era only; stateless-era traffic has no id.
   query_string = <<-EOT
-    filter ispresent(mcp_session_id)
+    filter ispresent(mcp_session_id) and ispresent(jsonrpc_method) and jsonrpc_method != 'initialize'
     | stats count_distinct(mcp_session_id) as sessions by bin(1d), @log
     | sort @timestamp asc
   EOT
@@ -133,6 +137,9 @@ resource "aws_cloudwatch_query_definition" "real_user_sessions_per_day" {
   # and Census (Node.js codebase, no jsonrpc_* fields) under-count here, the
   # same gaps as the other Lambda-log queries. So do dual-era cores (Anchorage
   # GIS since 2026-09-17): 2026-07-28-era sessions carry no session id at all.
+  # With the whole fleet dual-era since 2026-11-08, claude.ai / claude-code
+  # traffic is all stateless-era, so this returns ~0 while usage continues;
+  # it is a legacy-client measure only. Use real-tool-calls-per-day.
   query_string = <<-EOT
     filter jsonrpc_method = 'tools/call' and ispresent(mcp_session_id)
     | stats count_distinct(mcp_session_id) as real_sessions by bin(1d), @log

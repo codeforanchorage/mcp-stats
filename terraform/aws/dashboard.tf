@@ -97,13 +97,18 @@ resource "aws_cloudwatch_dashboard" "fleet_usage" {
         width  = 12
         height = 6
         properties = {
-          title   = "Sessions per day — whole fleet (distinct mcp_session_id; includes claude.ai's twice-daily connector refresh — see Row 5 for real usage; 2026-07-28-era traffic has no session id and is not counted)"
+          # A session id only counts once the client sends it back on a
+          # request after `initialize`. The fleet probe (and any scanner)
+          # opens a fresh session every run and never reuses the id, which
+          # put ~1,250 ids/day on this chart from 2026-11-08; requiring a
+          # non-initialize method drops them.
+          title   = "Legacy-era sessions per day — whole fleet (distinct mcp_session_id reused after initialize; fleet probe excluded; includes claude.ai's connector refresh; 2026-07-28-era traffic has no session id — see Row 5 for real usage)"
           region  = var.aws_region
           view    = "timeSeries"
           stacked = false
           query = join("\n", [
             "${local.lambda_source}",
-            "| filter ispresent(mcp_session_id)",
+            "| filter ispresent(mcp_session_id) and ispresent(jsonrpc_method) and jsonrpc_method != 'initialize'",
             "| stats count_distinct(mcp_session_id) as sessions by bin(1d)",
             "| sort @timestamp asc",
           ])
@@ -145,13 +150,13 @@ resource "aws_cloudwatch_dashboard" "fleet_usage" {
         width  = 12
         height = 6
         properties = {
-          title   = "Sessions per day, broken down by MCP"
+          title   = "Legacy-era sessions per day, broken down by MCP (id reused after initialize; fleet probe excluded)"
           region  = var.aws_region
           view    = "timeSeries"
           stacked = true
           query = join("\n", [
             "${local.lambda_source}",
-            "| filter ispresent(mcp_session_id)",
+            "| filter ispresent(mcp_session_id) and ispresent(jsonrpc_method) and jsonrpc_method != 'initialize'",
             "| stats count_distinct(mcp_session_id) as sessions by bin(1d), @log",
             "| sort @timestamp asc",
           ])
@@ -300,7 +305,11 @@ resource "aws_cloudwatch_dashboard" "fleet_usage" {
           # Requires the session id to be present, so Boston (doesn't propagate
           # mcp_session_id) and Census (Node.js codebase, no jsonrpc_* fields)
           # under-count here — same gaps as the other Lambda-log widgets.
-          title   = "Real user sessions per day by MCP (distinct mcp_session_id with ≥1 tools/call; Boston/Census under-count; 2026-07-28-era sessions have no id — Anchorage GIS since 2026-09-17)"
+          # Since the whole fleet went dual-era (2026-11-08) claude.ai and
+          # claude-code use the stateless revision, so this reads ~0 while
+          # real usage continues. It only shows legacy clients that keep a
+          # session; use the tool-calls widget (left) for adoption.
+          title   = "Legacy-era sessions with a tool call, per day by MCP (distinct mcp_session_id with ≥1 tools/call; claude.ai / claude-code are 2026-07-28-era and have no id, so ~0 is expected — use tool calls, left)"
           region  = var.aws_region
           view    = "timeSeries"
           stacked = true
