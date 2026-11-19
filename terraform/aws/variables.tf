@@ -98,23 +98,30 @@ variable "fleet_waf_members" {
 
     Defaults mirror each repo's prod.tfvars as of 2026-08-23. When onboarding a
     new MCP, add it here and apply BEFORE flipping the repo to the shared WAF.
+
+    `allow_large_body = true` exempts that Host from the managed 8 KB body
+    size rule (see "large-body exemption" in shared_waf.tf). Set it ONLY for
+    a server that takes inline GeoJSON polygons AND sets
+    `server_max_body_bytes` in its config.yaml -- with the exemption on, that
+    setting is the only body size limit below API Gateway's 10 MB.
   EOT
   type = map(object({
     host                = string
     rate_limit_per_5min = number
+    allow_large_body    = optional(bool, false)
   }))
   default = {
     ebird               = { host = "ebird.codeforanchorage.org", rate_limit_per_5min = 50 }
     census              = { host = "us-census.codeforanchorage.org", rate_limit_per_5min = 2000 }
-    anchorage-gis       = { host = "anchorage-gis.codeforanchorage.org", rate_limit_per_5min = 2000 } # 2026-11-17: same reason as eCode; used alongside it
-    alaska-geoportal    = { host = "alaska-geoportal.codeforanchorage.org", rate_limit_per_5min = 300 }
+    anchorage-gis       = { host = "anchorage-gis.codeforanchorage.org", rate_limit_per_5min = 2000, allow_large_body = true } # 2026-11-17: same reason as eCode; used alongside it
+    alaska-geoportal    = { host = "alaska-geoportal.codeforanchorage.org", rate_limit_per_5min = 300, allow_large_body = true }
     anchorage-checkbook = { host = "checkbook.codeforanchorage.org", rate_limit_per_5min = 2000 }         # 2026-11-17: same reason as eCode
     anchorage-ecode     = { host = "anchorage-ecode.codeforanchorage.org", rate_limit_per_5min = 2000 }   # 2026-11-13: attorneys via Claude.ai share Anthropic egress IPs
     anchorage-parcels   = { host = "anchorage-parcels.codeforanchorage.org", rate_limit_per_5min = 2000 } # 2026-11-17: same reason as eCode
     audubon-iba         = { host = "audubon-iba.codeforanchorage.org", rate_limit_per_5min = 300 }
     living-atlas        = { host = "living-atlas.codeforanchorage.org", rate_limit_per_5min = 300 }
     sandiego-city       = { host = "sandiego-city-gis.codeforanchorage.org", rate_limit_per_5min = 300 }
-    sandiego-regional   = { host = "sandiego-regional-gis.codeforanchorage.org", rate_limit_per_5min = 300 }
+    sandiego-regional   = { host = "sandiego-regional-gis.codeforanchorage.org", rate_limit_per_5min = 300, allow_large_body = true }
     worcester           = { host = "worcester-gis.codeforanchorage.org", rate_limit_per_5min = 300 }
   }
 

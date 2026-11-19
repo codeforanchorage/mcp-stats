@@ -72,6 +72,12 @@ locals {
       priority = i + 1
     }
   ]
+
+  # Hosts exempt from the managed 8 KB body rule (inline GeoJSON polygons).
+  fleet_waf_large_body_hosts = [
+    for k in local.fleet_waf_member_keys : var.fleet_waf_members[k].host
+    if var.fleet_waf_members[k].allow_large_body
+  ]
 }
 
 resource "aws_wafv2_web_acl" "fleet" {
@@ -276,6 +282,23 @@ resource "aws_wafv2_web_acl" "fleet" {
       managed_rule_group_statement {
         name        = "AWSManagedRulesCommonRuleSet"
         vendor_name = "AWS"
+
+        # Large-body exemption, part 1. SizeRestrictions_BODY blocks any
+        # body over 8 KB, which is about 330 polygon vertices: the GIS
+        # servers advertise 10,000 for an inline `filter_geometry`, and a
+        # larger polygon got a bare 403 from the gateway, never reaching
+        # the server (reproduced on anchorage-gis 2026-11-19). In Count
+        # mode the rule only labels the request; the rule below turns the
+        # label back into a block for every host that is not exempt.
+        dynamic "rule_action_override" {
+          for_each = length(local.fleet_waf_large_body_hosts) > 0 ? [1] : []
+          content {
+            name = "SizeRestrictions_BODY"
+            action_to_use {
+              count {}
+            }
+          }
+        }
       }
     }
 
@@ -283,6 +306,91 @@ resource "aws_wafv2_web_acl" "fleet" {
       cloudwatch_metrics_enabled = true
       metric_name                = "${var.fleet_waf_name}-CommonRuleSet"
       sampled_requests_enabled   = true
+    }
+  }
+
+  # Large-body exemption, part 2: block a body over 8 KB unless the Host is
+  # a member with allow_large_body. Must run AFTER the CommonRuleSet (higher
+  # priority number), which is what adds the label. Exempt servers enforce
+  # their own limit (`server_max_body_bytes`, HTTP 413).
+  dynamic "rule" {
+    for_each = length(local.fleet_waf_large_body_hosts) > 0 ? [1] : []
+    content {
+      name     = "body-over-8kb-non-exempt-host"
+      priority = 210
+
+      action {
+        block {}
+      }
+
+      statement {
+        and_statement {
+          statement {
+            label_match_statement {
+              scope = "LABEL"
+              key   = "awswaf:managed:aws:core-rule-set:SizeRestrictions_Body"
+            }
+          }
+
+          statement {
+            not_statement {
+              statement {
+                # or_statement requires >= 2 branches (same as the tiers).
+                dynamic "byte_match_statement" {
+                  for_each = length(local.fleet_waf_large_body_hosts) == 1 ? local.fleet_waf_large_body_hosts : []
+                  content {
+                    positional_constraint = "EXACTLY"
+                    search_string         = byte_match_statement.value
+
+                    field_to_match {
+                      single_header {
+                        name = "host"
+                      }
+                    }
+
+                    text_transformation {
+                      priority = 0
+                      type     = "LOWERCASE"
+                    }
+                  }
+                }
+
+                dynamic "or_statement" {
+                  for_each = length(local.fleet_waf_large_body_hosts) > 1 ? [local.fleet_waf_large_body_hosts] : []
+                  content {
+                    dynamic "statement" {
+                      for_each = or_statement.value
+                      content {
+                        byte_match_statement {
+                          positional_constraint = "EXACTLY"
+                          search_string         = statement.value
+
+                          field_to_match {
+                            single_header {
+                              name = "host"
+                            }
+                          }
+
+                          text_transformation {
+                            priority = 0
+                            type     = "LOWERCASE"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      visibility_config {
+        cloudwatch_metrics_enabled = true
+        metric_name                = "${var.fleet_waf_name}-body-over-8kb"
+        sampled_requests_enabled   = true
+      }
     }
   }
 
