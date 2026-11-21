@@ -112,6 +112,20 @@ Known gaps / variances:
   At current volume that is most of the fleet's sessions, initializes and
   "unique clients". Judge adoption from the Row 5 `tools/call`-only widgets
   and the `real-*` saved queries; the rest measure connectivity.
+- **Servers on `opencontext-core` 1.5.0 log differently.** As of
+  2026-11-20 that is Anchorage GIS, Anchorage Checkbook and Anchorage
+  Parcels; the other core-based servers pin 1.4.1. On 1.5.0 the HTTP log
+  lines carry `request_bytes` / `response_bytes` instead of
+  `request_body` / `response_body`, and a `jsonrpc_params`,
+  `jsonrpc_result` or `jsonrpc_error` over 8 KB is logged as a summary
+  (`_truncated`, `_bytes`, `_keys`) that keeps `name`, `clientInfo`,
+  `protocolVersion`, `isError`, `resultType` and `serverInfo`. Nothing
+  here reads the removed fields (checked 2026-11-20), so every widget
+  and saved query still covers those three; a new query that needs the
+  text of a large result will not find it. 1.5.0 also keeps the plugin
+  alive between invocations of a warm container, so on those servers
+  plugin start-up lines appear once per cold start, not once per
+  request: do not count them as requests.
 - **Newer-core MCPs reject `MCP-Protocol-Version: 2026-07-28` with a 400**
   (core from 2026-08-24 on; as of 2026-10-21 that is eBird, Anchorage
   eCode, both San Diego servers and Alaska Geoportal.
